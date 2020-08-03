@@ -1,6 +1,79 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pickle
+import re
+from pathlib import Path
+from typing import List, Union
+
 import nanoepitools.math as nem
+
+
+def load_nanopore_metcalls_from_tsv(input_folder: Union[str, Path],
+                                    samples: List[str],
+                                    mettypes=['cpg', 'gpc', 'dam']):
+    # matches filenames like "footprinting_24_met_cpg.tsv" or
+    # "invitro12_2_0_met_dam.tsv"
+    filename_regex = re.compile('^(.*)_([0-9]*)_met_([^_]*)\\.tsv$')
+    input_folder = Path(input_folder)
+
+    all_sample_met = dict()
+    for sample in samples:
+        all_sample_met[sample] = dict()
+        for mettype in mettypes:
+            all_sample_met[sample][mettype] = None
+
+    for f in input_folder.iterdir():
+        mitch = filename_regex.match(f.name)
+        if mitch is not None:
+            sample, batch, mettype = mitch.groups()
+            # Only load select sample and mettypes
+            if sample not in samples or mettype not in mettypes:
+                continue
+
+            met_part = pd.read_csv(f, sep='\t')
+            if all_sample_met[sample][mettype] is None:
+                all_sample_met[sample][mettype] = met_part
+            else:
+                all_sample_met[sample][mettype] = all_sample_met[sample][
+                    mettype].append(met_part)
+
+    return all_sample_met
+
+
+def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
+                                  samples: List[str],
+                                  mettypes: List[str] = ['cpg', 'gpc', 'dam'],
+                                  chroms: List[str] = None):
+    # matches filenames like "footprinting_chr2L_met_cpg.pkl" or
+    # "invitro12_2_chr4_met_dam.pkl"
+    filename_regex = re.compile('^(.*)_chr(.*)_met_([^_]*)\\.pkl$')
+    input_folder = Path(input_folder)
+
+    all_sample_met = dict()
+    for sample in samples:
+        all_sample_met[sample] = dict()
+        for chrom in chroms:
+            all_sample_met[sample][chrom] = dict()
+            for mettype in mettypes:
+                all_sample_met[sample][chrom][mettype] = None
+
+    for fname in input_folder.iterdir():
+        mitch = filename_regex.match(fname.name)
+        if mitch is not None:
+            sample, chrom, mettype = mitch.groups()
+            # Only load select samples, chroms, and mettypes
+            if sample not in samples or mettype not in mettypes or chrom not \
+                    in chroms:
+                continue
+
+            met_part = pd.read_pickle(fname, compression='gzip')
+            if all_sample_met[sample][chrom][mettype] is None:
+                all_sample_met[sample][chrom][mettype] = met_part
+            else:
+                all_sample_met[sample][chrom][mettype] = all_sample_met[
+                    sample][chrom][mettype].append(met_part)
+
+    return all_sample_met
 
 
 def get_only_single_cpg_calls(metcall: pd.DataFrame):
@@ -20,7 +93,7 @@ def add_sixmer_column(metcall_onecpg: pd.DataFrame):
     sixmer around the CpG site. Assumes only single cpg calls
     :param metcall_onecpg: the dataframe as produced by nanopolis
     """
-    assert(all(metcall_onecpg['sequence'].map(lambda x: len(x) == 11)))
+    assert (all(metcall_onecpg['sequence'].map(lambda x: len(x) == 11)))
     metcall_onecpg['sixmer'] = metcall_onecpg['sequence'].map(lambda x: x[3:-2])
 
 

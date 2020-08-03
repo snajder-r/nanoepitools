@@ -1,3 +1,5 @@
+from typing import List
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -8,43 +10,66 @@ import nanoepitools.nanopolish_calls as npc
 default_base_colors = {'C': 'r', 'T': 'g', 'G': 'b', 'A': 'y'}
 
 
-def plot_met_hist_types(metcall: pd.DataFrame, typecol='type', bins=200,
-                        bound=20,
-                        alpha=0.5, typedict=None, typecolor=None,
-                        title='Methylation log likelihood ratios'):
+def plot_met_multiple_hist(metcalls: List[pd.DataFrame], bins=200,
+                           bound=20, alpha=0.5, colors=None, labels=None,
+                           normalize_histograms=False,
+                           title='Methylation log likelihood ratios'):
     """
     Plots a histogram of log-likelihood ratios from nanopolish output.
     Plots multiple histograms over each other, to compare different
     samples
-    :param metcall: the dataframe as produced by nanopolish
-    :param typecol: which column distinguishes the types/samples (
-    default='type')
+    :param metcalls: a list of dataframes as produced by nanopolish
     :param bins: The number of bins for the histogram (default:200)
-    :param bounds: Clip llrs with an absolute value larger than this (
+    :param bound: Clip llrs with an absolute value larger than this (
     default:20)
     :param alpha: Opacity of the histogram (default:0.5)
-    :param typedict: Provide a readable type/sample name for the legend
-    :param typecolor: Provide a color for each type/sample
+    :param colors: Color for each group
+    :param labels: Label for each group (for legend)
+    :param normalize_histograms: whether to rescale histograms so they have
+    the same total
     :param title: Title for the plot
     :return:
     """
-    types = set(metcall[typecol])
-    if typedict is None:
-        typedict = {t: t for t in types}
-    if typecol is None:
-        typecolor = {t: None for t in types}
-    bins = np.arange(-bound, bound, (2 * bound + 1) / bins)
-    for t in types:
-        llr_type = metcall['log_lik_ratio'].loc[metcall[typecol] == t]
+    bins = np.arange(-bound, bound+1, (2 * (bound + 1)) / bins)
+    for i, metcall in enumerate(metcalls):
+        llr_type = metcall['log_lik_ratio']
         llr_type = np.clip(llr_type, -bound, bound)
-        plt.hist(llr_type, bins=bins, alpha=alpha,
-                 color=typecolor[t],
-                 label=typedict[t])
+        weights = np.ones(len(llr_type))
+        if normalize_histograms:
+            weights = weights / len(llr_type)
+        plt.hist(llr_type, weights=weights, bins=bins, alpha=alpha,
+                 color=(colors[i] if colors is not None else None),
+                 label=(labels[i] if labels is not None else None))
     plt.xlabel("Methylation log-likelihood ratio")
     plt.ylabel('Frequency')
     plt.title(title)
     plt.legend()
     plt.tight_layout()
+
+
+def plot_met_hist_types(metcall: pd.DataFrame, typecol='type', typedict=None,
+                        typecolor=None, **kwargs):
+    """
+    Plots a histogram of log-likelihood ratios from nanopolish output.
+    Plots multiple histograms over each other, to compare different
+    samples. kwargs will be passed on to plot_met_multiple_hist
+    :param metcall: the dataframe as produced by nanopolish
+    :param typecol: which column distinguishes the types/samples (
+    default='type')
+    :param typedict: Provide a readable type/sample name for the legend
+    :param typecolor: Provide a color for each type/sample
+    :return:
+    """
+    types = list(set(metcall[typecol]))
+    if typedict is None:
+        typedict = {t: t for t in types}
+    if typecolor is None:
+        typecolor = {t: None for t in types}
+
+    metcalls = [metcall.loc[metcall[typecol] == t] for t in types]
+    labels = [typedict[t] for t in types]
+    colors = [typecolor[t] for t in types]
+    plot_met_multiple_hist(metcalls, labels=labels, colors=colors, **kwargs)
 
 
 def plot_read_bs_dist(metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20):
@@ -213,4 +238,4 @@ def plot_kmer_error_vs_uncertainty(metcall: pd.DataFrame,
                                      uncertainty_method=uncertainty_method)
 
     plot_kmer_function(kmer_uncertainty, kmer_error, base_colors,
-                       'Mean Uncertainty', 'Mean log likelihood ratio error')
+                       'Mean Uncertainty', 'Mean error rate')

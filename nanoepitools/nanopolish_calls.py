@@ -41,37 +41,27 @@ def load_nanopore_metcalls_from_tsv(input_folder: Union[str, Path],
 
 
 def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
-                                  samples: List[str],
-                                  mettypes: List[str] = ['cpg', 'gpc', 'dam'],
-                                  chroms: List[str] = None):
-    # matches filenames like "footprinting_chr2L_met_cpg.pkl" or
-    # "invitro12_2_chr4_met_dam.pkl"
-    filename_regex = re.compile('^(.*)_chr(.*)_met_([^_]*)\\.pkl$')
+                                  samples: List[str], chroms: List[str],
+                                  mettypes: List[str] = ['cpg', 'gpc', 'dam']):
+    base_filename = '{chrom}_met_{mettype}.pkl'
     input_folder = Path(input_folder)
 
     all_sample_met = dict()
     for sample in samples:
         all_sample_met[sample] = dict()
+
+        sample_dir = input_folder.joinpath(sample)
+
         for chrom in chroms:
             all_sample_met[sample][chrom] = dict()
             for mettype in mettypes:
                 all_sample_met[sample][chrom][mettype] = None
 
-    for fname in input_folder.iterdir():
-        mitch = filename_regex.match(fname.name)
-        if mitch is not None:
-            sample, chrom, mettype = mitch.groups()
-            # Only load select samples, chroms, and mettypes
-            if sample not in samples or mettype not in mettypes or chrom not \
-                    in chroms:
-                continue
+                filename = base_filename.format(chrom=chrom, mettype=mettype)
+                filepath = sample_dir.joinpath(filename)
 
-            met_part = pd.read_pickle(fname, compression='gzip')
-            if all_sample_met[sample][chrom][mettype] is None:
-                all_sample_met[sample][chrom][mettype] = met_part
-            else:
-                all_sample_met[sample][chrom][mettype] = all_sample_met[
-                    sample][chrom][mettype].append(met_part)
+                all_sample_met[sample][chrom][mettype] = pd.read_pickle(
+                    filepath, compression='gzip')
 
     return all_sample_met
 

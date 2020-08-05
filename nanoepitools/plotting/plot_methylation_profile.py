@@ -52,4 +52,4 @@ def plot_segment_lines(segment: np.array, site_genomic_pos=None):
             continue
         if site_genomic_pos is not None:
             i = site_genomic_pos[i]
-        plt.plot((i - 1 + 0.5, i - 1 + 0.5), (0, ymax - 1), c='k')
+        plt.plot((i - 2 + 0.5, i - 2 + 0.5), (0, ymax - 1), c='k')

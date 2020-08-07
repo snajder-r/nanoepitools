@@ -1,9 +1,9 @@
-import numpy as np
-import pandas as pd
-import pickle
 import re
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Dict
+
+import numpy as np
+import pandas as pd
 
 import nanoepitools.math as nem
 
@@ -42,7 +42,23 @@ def load_nanopore_metcalls_from_tsv(input_folder: Union[str, Path],
 
 def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
                                   samples: List[str], chroms: List[str],
-                                  mettypes: List[str] = ['cpg', 'gpc', 'dam']):
+                                  mettypes: List[str] = ['cpg', 'gpc',
+                                                         'dam']) -> \
+        Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
+    """
+    Loads pickled nanopolish methylation calls as pandas dataframes and
+    organizes them by sample, chromosome, and methylation type.
+
+    The output is a cascading tree of dictionaries:
+        samplename -> (chromosome -> (methylation type -> dataframe))
+
+    :param input_folder: folder containing subfolders for each sample
+    :param samples: which samples to include
+    :param chroms: which chromosomes to include
+    :param mettypes: which methylation types to include (default: cpg,
+    gpc and dam)
+    :return: tree of dictionaries with dataframes as leafes
+    """
     base_filename = '{chrom}_met_{mettype}.pkl'
     input_folder = Path(input_folder)
 
@@ -97,9 +113,8 @@ def compute_kmer_uncertainty(metcall: pd.DataFrame,
     """
     metcall_onecpg = get_only_single_cpg_calls(metcall).copy()
     add_sixmer_column(metcall_onecpg)
-    metcall_onecpg['uncertainty'] = \
-        nem.llr_to_uncertainty(metcall_onecpg['log_lik_ratio'],
-                               method=uncertainty_method)
+    metcall_onecpg['uncertainty'] = nem.llr_to_uncertainty(
+        metcall_onecpg['log_lik_ratio'], method=uncertainty_method)
 
     metcall_onecpg = metcall_onecpg[['sixmer', 'uncertainty']]
     kmer_uncertainty = metcall_onecpg.groupby('sixmer').mean()

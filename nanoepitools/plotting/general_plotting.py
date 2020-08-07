@@ -1,5 +1,7 @@
-import matplotlib.pyplot as plt
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+from bokeh.plotting import figure, output_file
 
 
 def set_if_not_in_dict(d, k, v):
@@ -12,8 +14,8 @@ class PlotArchiver:
         self.project = project
         if config is None:
             config = dict()
-        set_if_not_in_dict(config, 'plot_archive_dir', Path.home().joinpath(
-            'nanoepitools_plots'))
+        set_if_not_in_dict(config, 'plot_archive_dir',
+                           Path.home().joinpath('nanoepitools_plots'))
         set_if_not_in_dict(config, 'filetype', 'pdf')
         self.config = config
 
@@ -23,8 +25,10 @@ class PlotArchiver:
     def ensure_project_path_exists(self):
         self.project_path.mkdir(parents=True, exist_ok=True)
 
-    def get_plot_path(self, key):
-        filename = '{key}.{ft}'.format(key=key, ft=self.config['filetype'])
+    def get_plot_path(self, key, filetype=None):
+        if filetype is None:
+            filetype = self.config['filetype']
+        filename = '{key}.{ft}'.format(key=key, ft=filetype)
         return self.project_path.joinpath(filename)
 
     def savefig(self, key, fig=None):
@@ -40,4 +44,7 @@ class PlotArchiver:
         self.savefig(key, fig=fig)
         fig.show()
 
-
+    def bokeh_open_html(self, key):
+        self.ensure_project_path_exists()
+        path = self.get_plot_path(key, 'html')
+        output_file(path)

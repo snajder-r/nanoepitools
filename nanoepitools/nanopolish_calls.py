@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import re
 from pathlib import Path
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Any
 
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 
 import nanoepitools.math as nem
 
@@ -43,8 +46,8 @@ def load_nanopore_metcalls_from_tsv(input_folder: Union[str, Path],
 def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
                                   samples: List[str], chroms: List[str],
                                   mettypes: List[str] = ['cpg', 'gpc',
-                                                         'dam']) -> \
-        Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
+                                                         'dam']) -> Dict[
+        str, Dict[str, Dict[str, pd.DataFrame]]]:
     """
     Loads pickled nanopolish methylation calls as pandas dataframes and
     organizes them by sample, chromosome, and methylation type.
@@ -80,6 +83,162 @@ def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
                     filepath, compression='gzip')
 
     return all_sample_met
+
+
+class RegionFilter:
+    def filter(self, allmet):
+        return allmet
+
+
+class IntervalFilter(RegionFilter):
+    def __init__(self, start, end):
+        self.start = end
+        self.end = end
+
+    def filter(self, allmet):
+        return allmet.loc[
+            allmet['start'].map(lambda x: self.start <= x < self.end)]
+
+
+class QuantileFilter(RegionFilter):
+    def __init__(self, qfrom, qto):
+        self.qfrom = qfrom
+        self.qto = qto
+
+    def filter(self, allmet):
+        start_locations = list(set(allmet['start']))
+        start = np.quantile(start_locations, self.qfrom)
+        end = np.quantile(start_locations, self.qto)
+        return allmet.loc[allmet['start'].map(lambda x: start <= x < end)]
+
+
+class MultiIntervalFilter(RegionFilter):
+    def __init__(self, ranges):
+        self.ranges = ranges
+
+    def filter(self, allmet):
+        passed = allmet['start'].map(
+            lambda x: any([r[0] <= x < r[1] for r in self.ranges]))
+        return allmet.loc[passed]
+
+
+class SparseMethylationMatrixContainer:
+    def __init__(self, met_matrix: sp.csc_matrix, read_names: np.ndarray,
+                 genomic_coord: np.ndarray,
+                 coord_to_index_dict: Dict[str, Any]):
+        self.met_matrix = met_matrix
+        self.read_names = read_names
+        self.genomic_coord = genomic_coord
+        self.coord_to_index_dict = coord_to_index_dict
+
+    def get_submatrix(self, start: int,
+                      end: int) -> SparseMethylationMatrixContainer:
+        """
+        Creates a submatrix containing only the genomic positions between
+        start and end index (note: start and end are matrix indices,
+        not genomic coordinates)
+        :param start: start index in matrix
+        :param end: end index in matrix
+        :return: sub-matrix container
+        """
+        sub_met_matrix = self.met_matrix[:, start:end]
+        sub_genomic_coord = self.genomic_coord[start:end]
+        sub_read_names = self.read_names
+
+        while True:
+            read_has_values = np.array(
+                ((sub_met_matrix != 0).sum(axis=1) > 0)).flatten()
+            site_has_values = np.array(
+                ((sub_met_matrix != 0).sum(axis=0) > 0)).flatten()
+            sub_met_matrix = sub_met_matrix[read_has_values, :][:,
+                             site_has_values]
+            sub_read_names = sub_read_names[read_has_values]
+            sub_genomic_coord = sub_genomic_coord[site_has_values]
+
+            if (~read_has_values).sum() == 0 and (~site_has_values).sum() == 0:
+                break
+
+        sub_coord_to_index_dict = {sub_genomic_coord[i]: i for i in
+                                   range(len(sub_genomic_coord))}
+        return SparseMethylationMatrixContainer(sub_met_matrix, sub_read_names,
+                                                sub_genomic_coord,
+                                                sub_coord_to_index_dict)
+
+    def get_genomic_region(self):
+        return self.genomic_coord[0], self.genomic_coord[-1]
+
+
+def filter_nanopolish(allmet: pd.DataFrame,
+                      region_filter: RegionFilter = RegionFilter(),
+                      filter_bad_reads: bool = False):
+    # Apply filter
+    allmet = region_filter.filter(allmet)
+
+    # Filtering regions with too high or too low coverage
+    # High coverage spikes are likely highly repeated regions (e.g. near
+    # telomeres or centromeres)
+    if filter_bad_reads:
+        print("Filtering bad locations")
+        while True:
+            # Filter regions that have insanely high coverage
+            loc_coverage = allmet[['start', 'read_name']].groupby(
+                'start').count()
+            loc_coverage_mean = np.mean(loc_coverage['read_name'])
+            loc_coverage_std = np.std(loc_coverage['read_name'])
+            cov_spike = loc_coverage_mean + loc_coverage_std * 4
+
+            bad_locs = set(
+                loc_coverage.index[(loc_coverage['read_name'] > cov_spike)])
+            allmet = allmet[allmet['start'].map(lambda x: x not in bad_locs)]
+
+            # Filter reads that have really low number of sites
+            read_coverage = allmet[['start', 'read_name']].groupby(
+                'read_name').count()
+            bad_reads = set(read_coverage.index[read_coverage['start'] < 10])
+            allmet = allmet[
+                allmet['read_name'].map(lambda x: x not in bad_reads)]
+            print("New shape:", allmet.shape)
+            if len(bad_locs) == 0 and len(bad_reads) == 0:
+                return allmet
+            if allmet.shape[0] == 0:
+                return allmet
+
+
+def metcall_dataframe_to_llr_matrix(allmet: pd.DataFrame):
+    # Detect where reads start and end, and then create sorted list of reads
+    allmet = allmet.sort_values(['read_name', 'start'])
+    read_start = allmet[['read_name', 'start']].groupby('read_name').min().start
+    read_start = read_start.sort_values()
+    read_names = np.array(read_start.index)
+
+    genomic_coord = np.sort(list(set(allmet['start'])))
+    coord_to_index_dict = {genomic_coord[i]: i for i in
+                           range(len(genomic_coord))}
+    # Building sparse read vs site methylation matrix
+    # As a compromise between memory usage and processing speed,
+    # we build dense blocks (fast, but takes memory),
+    # then make them sparse (slow, but memory efficient),
+    # and then concatenate the sparse blocks
+    met_matrix = sp.lil_matrix((len(read_names), len(genomic_coord)))
+    read_dict = {read_names[i]: i for i in range(len(read_names))}
+    cur_rn = ''
+    i = 0
+    for e in allmet.itertuples():
+        if i % 1000000 == 0:
+            print('{0:.2f}'.format(i / allmet.shape[0] * 100), end=',')
+        if i + 1 % 100000000 == 0:
+            print()
+        i += 1
+
+        if cur_rn != e[5]:
+            cur_rn = e[5]
+            read_idx = read_dict[cur_rn]
+        met_matrix[read_idx, coord_to_index_dict[e[3]]] = e[6]
+    met_matrix = sp.csc_matrix(met_matrix)
+    genomic_coord = genomic_coord
+    coord_to_index_dict = coord_to_index_dict
+    return SparseMethylationMatrixContainer(met_matrix, read_names,
+                                            genomic_coord, coord_to_index_dict)
 
 
 def get_only_single_cpg_calls(metcall: pd.DataFrame):

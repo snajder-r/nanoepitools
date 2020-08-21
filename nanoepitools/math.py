@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import rankdata
 
 
 def llr_to_p(llr, prior=0.5):
@@ -21,4 +22,17 @@ def p_to_llr(p, prior=0.5):
 def llr_to_uncertainty(llr, method='linear'):
     if method == 'linear':
         p = llr_to_p(llr)
-        return 0.5 - np.abs(0.5-p)
+        return 0.5 - np.abs(0.5 - p)
+
+
+def fdr_from_pvals(p_vals: np.ndarray) -> np.ndarray:
+    """
+    Computes FDR from p-values using the Benjamini-Hochberg method.
+    :param p_vals: numpy array of p-values
+    :return: numpy array of adjusted p-values
+    """
+    ranked_p_values = rankdata(p_vals)
+    fdr = p_vals * len(p_vals) / ranked_p_values
+    fdr[fdr > 1] = 1
+
+    return fdr

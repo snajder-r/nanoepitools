@@ -104,3 +104,4 @@ def extract_read_haplotype_assignment(bamfile: Union[str, Path],
                     phase_sets.add_unphased_mapping(mapping)
 
     return phase_sets
+

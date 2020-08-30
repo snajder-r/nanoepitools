@@ -126,10 +126,10 @@ class ChromosomeContainer:
             end_value = self.h5group['range'][last, 0]
         
         ends = self.h5group['range'][
-               (self.chunk_size * chunk_id):(self.chunk_size * (chunk_id + 1)),
+               (self.chunk_size * chunk_id):(last+1),
                0]
         
-        matches = np.arange(self.chunk_size)[ends == end_value]
+        matches = np.arange(len(ends))[ends == end_value]
         
         if len(matches) == 0:
             # Nothing in this chunk, return end of the chunk we came from

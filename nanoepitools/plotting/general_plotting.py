@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import scipy.stats
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from bokeh.plotting import figure, output_file
@@ -8,6 +9,11 @@ from bokeh.plotting import figure, output_file
 def set_if_not_in_dict(d, k, v):
     if k not in d.keys():
         d[k] = v
+
+
+def density_plot(x, y, *argc, **kwargs):
+    density = scipy.stats.gaussian_kde(y)
+    plt.plot(density(x), *argc, **kwargs)
 
 
 class PDFPagesWrapper:
@@ -63,6 +69,10 @@ class PlotArchiver:
             fig = plt.gcf()
         self.savefig(key, fig=fig, close=False)
         fig.show()
+        # This is a workaround needed to ensure the figure is actually
+        # displayed in jupyter notebook. If we don't wait for a bit and close
+        # it right away, it may not be displayed
+        plt.pause(0.0001)
         plt.close(fig)
 
     def bokeh_open_html(self, key):
@@ -76,3 +86,15 @@ class PlotArchiver:
         self.pdf = PDFPagesWrapper(self, path)
         return self.pdf
 
+    def figure(self, **kwargs):
+        """
+        simply calls matplotlib.pyplot.figure() but then sets some default
+        parameters that I find handy
+        :param argc: parameters for plt.figure
+        :returns: return value if plt.figure
+        """
+        fig = plt.figure(dpi=200, **kwargs)
+        fig.set_tight_layout(True)
+        fig.patch.set_facecolor('w')
+        fig.autolayout = False
+        return fig

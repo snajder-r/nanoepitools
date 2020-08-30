@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,12 +6,13 @@ import pandas as pd
 
 import nanoepitools.math as nem
 import nanoepitools.nanopolish_calls as npc
+from nanoepitools.util import pandas_index_intersect
 
 default_base_colors = {'C': 'r', 'T': 'g', 'G': 'b', 'A': 'y'}
 
 
-def plot_met_multiple_hist(metcalls: List[pd.DataFrame], bins=200,
-                           bound=20, alpha=0.5, colors=None, labels=None,
+def plot_met_multiple_hist(metcalls: List[pd.DataFrame], bins=200, bound=20,
+                           alpha=0.5, colors=None, labels=None,
                            normalize_histograms=False,
                            title='Methylation log likelihood ratios'):
     """
@@ -30,7 +31,7 @@ def plot_met_multiple_hist(metcalls: List[pd.DataFrame], bins=200,
     :param title: Title for the plot
     :return:
     """
-    bins = np.arange(-bound, bound+1, (2 * (bound + 1)) / bins)
+    bins = np.arange(-bound, bound + 1, (2 * (bound + 1)) / bins)
     for i, metcall in enumerate(metcalls):
         llr_type = metcall['log_lik_ratio']
         llr_type = np.clip(llr_type, -bound, bound)
@@ -82,13 +83,10 @@ def plot_read_bs_dist(metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20):
     to zero
     :param min_calls: exclude reads with fewer (included) calls
     """
-    metcall = metcall[['read_name', 'log_lik_ratio']].copy()
-    metcall['ismet'] = metcall['log_lik_ratio'] > llr_threshold
-    metcall['isunmet'] = metcall['log_lik_ratio'] < -llr_threshold
-    metcall = metcall.groupby('read_name').sum()
-    metcall['bs'] = metcall['ismet'] / (metcall['ismet'] + metcall['isunmet'])
-    metcall = metcall.loc[(metcall['ismet'] + metcall['isunmet']) > min_calls]
-    plt.hist(metcall['bs'])
+    bs = npc.compute_read_methylation_betascore(metcall,
+                                                llr_threshold=llr_threshold,
+                                                min_calls=min_calls)
+    plt.hist(bs, bins=20)
 
 
 def plot_kmer_lenght_vs_uncertainty(metcall: pd.DataFrame,
@@ -112,19 +110,19 @@ def plot_kmer_lenght_vs_uncertainty(metcall: pd.DataFrame,
                                          method=uncertainty_method)
     kmerlen = metcall['sequence'].map(lambda x: len(x))
 
-    uncertainty_len_df = pd.DataFrame({'kmerlen': kmerlen,
-                                       'uncertainty': uncertainty})
+    uncertainty_len_df = pd.DataFrame(
+        {'kmerlen': kmerlen, 'uncertainty': uncertainty})
 
-    len_uncertainty_np_cum = np.cumsum(uncertainty_len_df.groupby(
-        'kmerlen').sum())
+    len_uncertainty_np_cum = np.cumsum(
+        uncertainty_len_df.groupby('kmerlen').sum())
     len_uncertainty_np = uncertainty_len_df.groupby('kmerlen').mean()
     len_incidents_np = uncertainty_len_df.groupby('kmerlen').count()
 
     fig = plt.figure(figsize=(15, 10))
     fig.patch.set_facecolor('w')
     axes = fig.subplots(2, 2)
-    axes[0, 0].scatter(len_uncertainty_np.index, np.log10(
-        len_incidents_np.uncertainty))
+    axes[0, 0].scatter(len_uncertainty_np.index,
+                       np.log10(len_incidents_np.uncertainty))
     axes[0, 0].set_title('Sequence length frequency (log transformed)')
     axes[0, 0].set_xlabel("Subsequence length")
     axes[0, 0].set_ylabel("Frequency log10")
@@ -141,12 +139,11 @@ def plot_kmer_lenght_vs_uncertainty(metcall: pd.DataFrame,
     axes[1, 0].set_ylabel("Cumulative Uncertainty")
 
     if has_correct_col:
-        len_correct_df = pd.DataFrame({'kmerlen': kmerlen,
-                                       'correct': metcall['correct']})
+        len_correct_df = pd.DataFrame(
+            {'kmerlen': kmerlen, 'correct': metcall['correct']})
         len_correct = len_correct_df.groupby('kmerlen').sum()
-        axes[1, 1].scatter(len_correct.index,
-                           1 - (
-                                   len_correct.correct / len_incidents_np.uncertainty))
+        axes[1, 1].scatter(len_correct.index, 1 - (
+                len_correct.correct / len_incidents_np.uncertainty))
         axes[1, 1].set_title('Error rate per sequence length')
         axes[1, 1].set_xlabel("Subsequence length")
         axes[1, 1].set_ylabel("Error rate")
@@ -154,9 +151,8 @@ def plot_kmer_lenght_vs_uncertainty(metcall: pd.DataFrame,
     return fig
 
 
-def plot_kmer_function(kmer_x_axis: pd.Series,
-                       kmer_y_axis: pd.Series, base_colors,
-                       x_axis_label, y_axis_label):
+def plot_kmer_function(kmer_x_axis: pd.Series, kmer_y_axis: pd.Series,
+                       base_colors, x_axis_label, y_axis_label):
     # Tuples represent x axis, y axis, and charcter in sequence
     index_map = [(0, 0, 0), (0, 1, 1), (1, 0, 4), (1, 1, 5)]
 
@@ -189,17 +185,15 @@ def plot_kmer_uncertainty(metcall: pd.DataFrame,
     llr_to_uncertainty. Default: 'linear'
     :return: figure object
     """
-    kmer_uncertainty = \
-        npc.compute_kmer_uncertainty(metcall,
-                                     uncertainty_method=uncertainty_method)
+    kmer_uncertainty = npc.compute_kmer_uncertainty(metcall,
+                                                    uncertainty_method=uncertainty_method)
     kmer_incidents = npc.count_kmer_incidents(metcall)
 
     plot_kmer_function(kmer_incidents, kmer_uncertainty, base_colors,
                        'k-mer frequency', 'Mean Uncertainty')
 
 
-def plot_kmer_error_rate(metcall: pd.DataFrame,
-                         base_colors=default_base_colors,
+def plot_kmer_error_rate(metcall: pd.DataFrame, base_colors=default_base_colors,
                          error_method='llr'):
     """
     Plot error rate of prediction per kmer
@@ -233,9 +227,41 @@ def plot_kmer_error_vs_uncertainty(metcall: pd.DataFrame,
     """
 
     kmer_error = npc.compute_kmer_error(metcall, error_method=error_method)
-    kmer_uncertainty = \
-        npc.compute_kmer_uncertainty(metcall,
-                                     uncertainty_method=uncertainty_method)
+    kmer_uncertainty = npc.compute_kmer_uncertainty(metcall,
+                                                    uncertainty_method=uncertainty_method)
 
     plot_kmer_function(kmer_uncertainty, kmer_error, base_colors,
                        'Mean Uncertainty', 'Mean error rate')
+
+
+def plot_beta_score_correlation(met_all: Dict[str, pd.DataFrame],
+                                x_axis_mettype: str, y_axis_mettype: str,
+                                color_mettype: str = None,
+                                llr_threshold: float = 2.5, min_calls: int = 20):
+    """
+    Creates a scatter plot plotting the beta score of methylation from different
+    methylation types against each other
+    :param met_all: Dictionary with methylation types as keys and dataframes
+    as values
+    :param x_axis_mettype: methylation type plotted on the x axis
+    :param y_axis_mettype: methylation type plotted on the y axis
+    :param color_mettype: methylation type plotted as color (default: None)
+    :param llr_threshold: llr threshold used for betascore computation
+    :param min_calls: minimum number of confident calls for betascore
+    """
+
+    needed_types = [x_axis_mettype, y_axis_mettype]
+    if color_mettype is not None:
+        needed_types.append(color_mettype)
+
+    bs = {mt: npc.compute_read_methylation_betascore(met_all[mt],
+                                                     llr_threshold=llr_threshold,
+                                                     min_calls=min_calls) for mt
+          in needed_types}
+
+    idx = pandas_index_intersect(*bs.values())
+    if color_mettype is not None:
+        plt.scatter(bs[x_axis_mettype][idx], bs[y_axis_mettype][idx],
+                    c=bs[color_mettype][idx], s=1)
+    else:
+        plt.scatter(bs[x_axis_mettype][idx], bs[y_axis_mettype][idx], s=1)

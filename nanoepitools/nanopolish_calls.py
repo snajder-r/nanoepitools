@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
-from pathlib import Path
-from typing import List, Union, Dict, Any
-
 import numpy as np
 import pandas as pd
+import re
 import scipy.sparse as sp
+from pathlib import Path
+from typing import List, Union, Dict
 
 import nanoepitools.math as nem
 
@@ -47,8 +46,7 @@ def load_nanopore_metcalls_from_tsv(input_folder: Union[str, Path],
 def load_merged_nanopore_metcalls(input_folder: Union[str, Path],
                                   samples: List[str], chroms: List[str],
                                   mettypes: List[str] = ['cpg', 'gpc',
-                                                         'dam']) -> Dict[
-    str, Dict[str, Dict[str, pd.DataFrame]]]:
+                                                         'dam']) -> Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
     """
     Loads pickled nanopolish methylation calls as pandas dataframes and
     organizes them by sample, chromosome, and methylation type.
@@ -126,13 +124,13 @@ class MultiIntervalFilter(RegionFilter):
 class SparseMethylationMatrixContainer:
     def __init__(self, met_matrix: sp.csc_matrix, read_names: np.ndarray,
                  genomic_coord_start: np.ndarray,
-                 genomic_coord_end: np.ndarray,
-                 coord_to_index_dict: Dict[str, Any]):
+                 genomic_coord_end: np.ndarray):
         self.met_matrix = met_matrix
         self.read_names = read_names
         self.genomic_coord = genomic_coord_start
         self.genomic_coord_end = genomic_coord_end
-        self.coord_to_index_dict = coord_to_index_dict
+        self.coord_to_index_dict = {genomic_coord_start[i]: i for i in
+                                    range(len(genomic_coord_start))}
     
     def get_submatrix_from_genomic_locations(self, start_base: int,
                                              end_base: int) -> \
@@ -140,6 +138,24 @@ class SparseMethylationMatrixContainer:
         start = self.coord_to_index_dict[start_base]
         end = self.coord_to_index_dict[end_base]
         return self.get_submatrix(start, end)
+    
+    def _compact(self):
+        while True:
+            read_has_values = np.array(
+                ((self.met_matrix != 0).sum(axis=1) > 0)).flatten()
+            site_has_values = np.array(
+                ((self.met_matrix != 0).sum(axis=0) > 0)).flatten()
+            self.met_matrix = \
+                self.met_matrix[read_has_values, :][:, site_has_values]
+            self.read_names = self.read_names[read_has_values]
+            self.genomic_coord = self.genomic_coord[site_has_values]
+            self.genomic_coord_end = self.genomic_coord_end[site_has_values]
+            
+            if (~read_has_values).sum() == 0 and (~site_has_values).sum() == 0:
+                break
+        
+        self.coord_to_index_dict = {self.genomic_coord[i]: i for i in
+                                    range(len(self.genomic_coord))}
     
     def get_submatrix(self, start: int,
                       end: int) -> SparseMethylationMatrixContainer:
@@ -154,28 +170,30 @@ class SparseMethylationMatrixContainer:
         sub_met_matrix = self.met_matrix[:, start:end]
         sub_genomic_coord = self.genomic_coord[start:end]
         sub_genomic_coord_end = self.genomic_coord_end[start:end]
-        sub_read_names = self.read_names
         
-        while True:
-            read_has_values = np.array(
-                ((sub_met_matrix != 0).sum(axis=1) > 0)).flatten()
-            site_has_values = np.array(
-                ((sub_met_matrix != 0).sum(axis=0) > 0)).flatten()
-            sub_met_matrix = sub_met_matrix[read_has_values, :][:,
-                             site_has_values]
-            sub_read_names = sub_read_names[read_has_values]
-            sub_genomic_coord = sub_genomic_coord[site_has_values]
-            sub_genomic_coord_end = sub_genomic_coord_end[site_has_values]
-            
-            if (~read_has_values).sum() == 0 and (~site_has_values).sum() == 0:
-                break
-        
-        sub_coord_to_index_dict = {sub_genomic_coord[i]: i for i in
-                                   range(len(sub_genomic_coord))}
-        return SparseMethylationMatrixContainer(sub_met_matrix, sub_read_names,
-                                                sub_genomic_coord, sub_genomic_coord_end,
-                                                sub_coord_to_index_dict)
+        ret = SparseMethylationMatrixContainer(sub_met_matrix, self.read_names,
+                                               sub_genomic_coord,
+                                               sub_genomic_coord_end)
+        ret._compact()
+        return ret
+
+    def get_submatrix_from_read_names(self, allowed_reads: List[str]) -> SparseMethylationMatrixContainer:
+        """
+        Creates a submatrix containing only the given reads and their methylation calls
+        not genomic coordinates)
+        :param allowed_reads: The read names to keep
+        :return: sub-matrix container
+        """
+        idx = [read in allowed_reads for read in self.read_names]
+        sub_met_matrix = self.met_matrix[idx, :]
+        sub_read_names = self.read_names[idx]
     
+        ret = SparseMethylationMatrixContainer(sub_met_matrix, sub_read_names,
+                                               self.genomic_coord,
+                                               self.genomic_coord_end)
+        ret._compact()
+        return ret
+
     def get_genomic_region(self):
         return self.genomic_coord[0], self.genomic_coord[-1]
 
@@ -248,9 +266,9 @@ def metcall_dataframe_to_llr_matrix(allmet: pd.DataFrame):
             read_idx = read_dict[cur_rn]
         met_matrix[read_idx, coord_to_index_dict[e[3]]] = e[6]
     met_matrix = sp.csc_matrix(met_matrix)
-    coord_to_index_dict = coord_to_index_dict
     return SparseMethylationMatrixContainer(met_matrix, read_names,
-                                            genomic_coord_start, genomic_coord_end, coord_to_index_dict)
+                                            genomic_coord_start,
+                                            genomic_coord_end)
 
 
 def get_only_single_cpg_calls(metcall: pd.DataFrame):

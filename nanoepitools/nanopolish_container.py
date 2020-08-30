@@ -1,9 +1,11 @@
-from pathlib import Path
-from typing import Union
-
 import h5py
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
+from pathlib import Path
+from typing import Union, List
+
+from nanoepitools.nanopolish_calls import SparseMethylationMatrixContainer
 
 
 def create_or_extend(parent_group, name, shape, data, **kwargs):
@@ -25,25 +27,164 @@ def create_or_extend(parent_group, name, shape, data, **kwargs):
 def argsort_ranges(chrom_group):
     return np.argsort(chrom_group['range'][:, 0], kind='mergesort')
 
+
+class MethlyationValuesContainer:
     
+    def __init__(self, chromosome_container, start, end):
+        self.chromosome = chromosome_container
+        self.start = start
+        self.end = end
+    
+    def get_read_names_unique(self):
+        read_name_ds = self.chromosome.h5group['read_name'][self.start:self.end]
+        reads_names, idx = np.unique(read_name_ds, return_index=True)
+        reads_names = reads_names[np.argsort(idx)]
+        return reads_names
+    
+    def get_ranges_unique(self):
+        ranges_ds = self.chromosome.h5group['range'][self.start:self.end]
+        # Since they are already pre-sorted, this is fast way to get uniques:
+        diff = np.ones_like(ranges_ds)
+        diff[1:] = ranges_ds[1:] - ranges_ds[:-1]
+        idx = diff[:, 0].nonzero()[0] & diff[:, 1].nonzero()[0]
+        return ranges_ds[idx, :]
+    
+    def get_ranges(self):
+        return self.chromosome.h5group['range'][self.start:self.end, :]
+    
+    def get_llrs(self):
+        return self.chromosome.h5group['llr'][self.start:self.end]
+    
+    def get_read_names(self):
+        return self.chromosome.h5group['read_name'][self.start:self.end]
+    
+    def to_sparse_methylation_matrix(self) -> SparseMethylationMatrixContainer:
+        read_names = self.get_read_names_unique()
+        genomic_ranges = self.get_ranges_unique()
+        
+        coord_to_index_dict = {genomic_ranges[i, 0]: i for i in
+                               range(len(genomic_ranges))}
+        
+        met_matrix = np.zeros((len(read_names), len(genomic_ranges)))
+        read_dict = {read_names[i]: i for i in range(len(read_names))}
+        
+        range_ds = self.get_ranges()
+        read_name_ds = self.get_read_names()
+        llr_ds = self.get_llrs()
+        for i in range(len(range_ds)):
+            read_i = read_dict[read_name_ds[i]]
+            range_i = coord_to_index_dict[range_ds[i, 0]]
+            met_matrix[read_i, range_i] = llr_ds[i]
+        met_matrix = sp.csc_matrix(met_matrix)
+        return SparseMethylationMatrixContainer(met_matrix, read_names,
+                                                genomic_ranges[:, 0],
+                                                genomic_ranges[:, 1])
+
+
+class ChromosomeContainer:
+    
+    def __init__(self, chromosome_group: h5py.Group, chunk_size: int):
+        self.h5group = chromosome_group
+        self.chunk_size = chunk_size
+    
+    def __len__(self):
+        return len(self.h5group['range'])
+    
+    def get_number_of_chunks(self):
+        num_chunks = len(self) // self.chunk_size
+        if len(self) % self.chunk_size != 0:
+            num_chunks += 1
+        return num_chunks
+    
+    def get_chunk_ids(self):
+        return [i for i in range(self.get_number_of_chunks())]
+    
+    def _seek_overlap_ranges_backwards(self, chunk_id, start_value=-1):
+        if start_value == -1:
+            start_value = self.h5group['range'][self.chunk_size * chunk_id, 0]
+        
+        starts = self.h5group['range'][(self.chunk_size * chunk_id):(
+                self.chunk_size * (chunk_id + 1)), 0]
+        matches = np.arange(self.chunk_size)[starts == start_value]
+        
+        if len(matches) == 0:
+            # Nothing in this chunk, return beginning of the chunk we came from
+            return self.chunk_size * (chunk_id + 1)
+        
+        if matches[0] == 0 and chunk_id > 0:
+            # All of this chunk is the same range, we need to go deeper
+            return self._seek_overlap_ranges_backwards(chunk_id - 1,
+                                                       start_value=start_value)
+        
+        # Part of this chunk has entries for this start position
+        return self.chunk_size * chunk_id + matches[0]
+    
+    def _seek_overlap_ranges_forwards(self, chunk_id, end_value=-1):
+        last = min(len(self), self.chunk_size * (chunk_id + 1) - 1)
+        
+        if end_value == -1:
+            end_value = self.h5group['range'][last, 0]
+        
+        ends = self.h5group['range'][
+               (self.chunk_size * chunk_id):(self.chunk_size * (chunk_id + 1)),
+               0]
+        
+        matches = np.arange(self.chunk_size)[ends == end_value]
+        
+        if len(matches) == 0:
+            # Nothing in this chunk, return end of the chunk we came from
+            return self.chunk_size * chunk_id - 1
+        
+        if matches[
+            -1] == self.chunk_size - 1 and chunk_id < \
+                self.get_number_of_chunks() - 1:
+            # All of this chunk is the same range, we need to go deeper
+            return self._seek_overlap_ranges_forwards(chunk_id + 1,
+                                                      end_value=end_value)
+        
+        # Part of this chunk has entries for this end position
+        return self.chunk_size * chunk_id + matches[-1]
+    
+    def get_chunk(self, chunk_id: int, overlap=True):
+        """
+        Returns the values of said chunk, and, if overlap=True, includes values
+        of neighboring chunks if they are in the same genomic ranges, such as
+        to avoid having a subset of reads of one location in one chunk and the
+        rest in the other
+        :param chunk_id: The chunk id (see get_chunk_ids)
+        :param overlap: Whether to look for same-region locations in
+        neighboring chunks
+        :return: MethlyationValuesContainer
+        """
+        if overlap:
+            earliest_pos = self._seek_overlap_ranges_backwards(chunk_id)
+            latest_pos = self._seek_overlap_ranges_forwards(chunk_id) + 1
+        else:
+            earliest_pos = self.chunk_size * chunk_id
+            latest_pos = min(self.chunk_size * (chunk_id + 1), len(self))
+        
+        return MethlyationValuesContainer(self, earliest_pos, latest_pos)
+
+
 class MetcallH5Container:
     
-    def __init__(self, outfile: Union[str, Path], mode: str = 'r',
+    def __init__(self, h5filepath: Union[str, Path], mode: str = 'r',
                  chunk_size=100000):
-        self.outfile = outfile
+        self.h5filepath = h5filepath
         self.mode = mode
         self.chunk_size = chunk_size
-        self.out_fp = None
+        self.h5_fp = None
+        self.chrom_container_cache = {}
     
     def __enter__(self):
-        self.out_fp = h5py.File(self.outfile, mode=self.mode)
+        self.h5_fp = h5py.File(self.h5filepath, mode=self.mode)
         return self
     
     def __exit__(self, exittype, exitvalue, traceback):
-        self.out_fp.close()
+        self.h5_fp.close()
     
     def add_to_h5_file(self, cur_df):
-        main_group = self.out_fp.require_group('chromosomes')
+        main_group = self.h5_fp.require_group('chromosomes')
         
         for chrom in set(cur_df['chromosome']):
             print(chrom)
@@ -80,3 +221,17 @@ class MetcallH5Container:
         cur_df = pd.read_csv(nanopolish_file, sep='\t',
                              dtype={'chromosome': str})
         self.add_to_h5_file(cur_df)
+    
+    def get_chromosomes(self) -> List[str]:
+        return [str(k) for k in self.h5_fp['chromosomes'].keys()]
+    
+    def __getitem__(self, chromosome: str):
+        if chromosome not in self.h5_fp['chromosomes'].keys():
+            return ValueError('No data for this chromosome in container')
+        if chromosome in self.chrom_container_cache.keys():
+            return self.chrom_container_cache[chromosome]
+        else:
+            ret = ChromosomeContainer(self.h5_fp['chromosomes'][chromosome],
+                                      self.chunk_size)
+            self.chrom_container_cache[chromosome] = ret
+            return ret

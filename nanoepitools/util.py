@@ -12,3 +12,4 @@ def pandas_index_intersect(*argc) -> pd.Index:
     for _,series in en:
         ret = ret.intersection(series.index)
     return ret
+

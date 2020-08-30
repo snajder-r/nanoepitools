@@ -125,10 +125,14 @@ class SparseMethylationMatrixContainer:
     def __init__(self, met_matrix: sp.csc_matrix, read_names: np.ndarray,
                  genomic_coord_start: np.ndarray,
                  genomic_coord_end: np.ndarray):
+        assert (met_matrix.shape[0] == len(read_names))
+        assert (met_matrix.shape[1] == len(genomic_coord_start))
+        assert (met_matrix.shape[1] == len(genomic_coord_end))
         self.met_matrix = met_matrix
-        self.read_names = read_names
-        self.genomic_coord = genomic_coord_start
-        self.genomic_coord_end = genomic_coord_end
+        self.shape = self.met_matrix.shape
+        self.read_names = np.array(read_names)
+        self.genomic_coord = np.array(genomic_coord_start)
+        self.genomic_coord_end = np.array(genomic_coord_end)
         self.coord_to_index_dict = {genomic_coord_start[i]: i for i in
                                     range(len(genomic_coord_start))}
     
@@ -153,7 +157,7 @@ class SparseMethylationMatrixContainer:
             
             if (~read_has_values).sum() == 0 and (~site_has_values).sum() == 0:
                 break
-        
+        self.shape = self.met_matrix.shape
         self.coord_to_index_dict = {self.genomic_coord[i]: i for i in
                                     range(len(self.genomic_coord))}
     

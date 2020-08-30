@@ -59,7 +59,7 @@ class MethlyationValuesContainer:
         return self.chromosome.h5group['read_name'][self.start:self.end]
     
     def to_sparse_methylation_matrix(self) -> SparseMethylationMatrixContainer:
-        read_names = self.get_read_names_unique()
+        read_names = [r.decode() for r in self.get_read_names_unique()]
         genomic_ranges = self.get_ranges_unique()
         
         coord_to_index_dict = {genomic_ranges[i, 0]: i for i in
@@ -72,7 +72,7 @@ class MethlyationValuesContainer:
         read_name_ds = self.get_read_names()
         llr_ds = self.get_llrs()
         for i in range(len(range_ds)):
-            read_i = read_dict[read_name_ds[i]]
+            read_i = read_dict[read_name_ds[i].decode()]
             range_i = coord_to_index_dict[range_ds[i, 0]]
             met_matrix[read_i, range_i] = llr_ds[i]
         met_matrix = sp.csc_matrix(met_matrix)

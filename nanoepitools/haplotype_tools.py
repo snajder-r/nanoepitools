@@ -78,7 +78,6 @@ def extract_read_haplotype_assignment(bamfile: Union[str, Path],
                                       return_unphased: bool = False) \
                                           -> PhaseSetCollection:
     phase_sets = PhaseSetCollection()
-
     with pysam.AlignmentFile(bamfile, "rb") as f:
         segment: pysam.AlignedSegment
         for segment in f.fetch(contig=chrom):

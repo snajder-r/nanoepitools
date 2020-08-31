@@ -73,35 +73,40 @@ class PhaseSetCollection:
 
 
 def extract_read_haplotype_assignment(bamfile: Union[str, Path],
-                                      chromosomes: List[str],
+                                      chrom: str,
+                                      read_names: List[str] = None,
                                       return_unphased: bool = False) \
                                           -> PhaseSetCollection:
     phase_sets = PhaseSetCollection()
-
     with pysam.AlignmentFile(bamfile, "rb") as f:
-        for chrom in chromosomes:
-            segment: pysam.AlignedSegment
-            for segment in f.fetch(contig=chrom):
-                # Sanity check: either it has both HP and PS, or neither
-                assert (segment.has_tag('HP') and segment.has_tag('PS')) or (
-                        not segment.has_tag('HP') and not segment.has_tag('PS'))
-                if segment.has_tag('HP'):
-                    hp_id = segment.get_tag('HP')
-                else:
-                    if not return_unphased:
-                        continue
-                    hp_id = 0
+        segment: pysam.AlignedSegment
+        for segment in f.fetch(contig=chrom):
+            # Sanity check: either it has both HP and PS, or neither
+            assert (segment.has_tag('HP') and segment.has_tag('PS')) or (
+                    not segment.has_tag('HP') and not segment.has_tag('PS'))
+            
+            if read_names is not None:
+                # If we are interested in specific read names:
+                if segment.query_name not in read_names:
+                    continue
+                
+            if segment.has_tag('HP'):
+                hp_id = segment.get_tag('HP')
+            else:
+                if not return_unphased:
+                    continue
+                hp_id = 0
 
-                mapping = ReadMapping(segment.query_name,
-                                      segment.reference_name,
-                                      segment.reference_start,
-                                      segment.reference_end, hp_id)
+            mapping = ReadMapping(segment.query_name,
+                                  segment.reference_name,
+                                  segment.reference_start,
+                                  segment.reference_end, hp_id)
 
-                if segment.has_tag('HP'):
-                    ps_id = segment.get_tag('PS')
-                    phase_sets.add_phased_mapping(ps_id, mapping)
-                else:
-                    phase_sets.add_unphased_mapping(mapping)
+            if segment.has_tag('HP'):
+                ps_id = segment.get_tag('PS')
+                phase_sets.add_phased_mapping(ps_id, mapping)
+            else:
+                phase_sets.add_unphased_mapping(mapping)
 
     return phase_sets
 

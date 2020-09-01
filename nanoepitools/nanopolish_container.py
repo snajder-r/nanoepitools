@@ -100,12 +100,12 @@ class ChromosomeContainer:
         return [i for i in range(self.get_number_of_chunks())]
     
     def _seek_overlap_ranges_backwards(self, chunk_id, start_value=-1):
+        last = min(len(self), self.chunk_size * (chunk_id + 1)) - 1
         if start_value == -1:
             start_value = self.h5group['range'][self.chunk_size * chunk_id, 0]
         
-        starts = self.h5group['range'][(self.chunk_size * chunk_id):(
-                self.chunk_size * (chunk_id + 1)), 0]
-        matches = np.arange(self.chunk_size)[starts == start_value]
+        starts = self.h5group['range'][(self.chunk_size * chunk_id):last, 0]
+        matches = np.arange(len(starts))[starts == start_value]
         
         if len(matches) == 0:
             # Nothing in this chunk, return beginning of the chunk we came from
@@ -120,7 +120,7 @@ class ChromosomeContainer:
         return self.chunk_size * chunk_id + matches[0]
     
     def _seek_overlap_ranges_forwards(self, chunk_id, end_value=-1):
-        last = min(len(self), self.chunk_size * (chunk_id + 1) - 1)
+        last = min(len(self), self.chunk_size * (chunk_id + 1)) - 1
         
         if end_value == -1:
             end_value = self.h5group['range'][last, 0]

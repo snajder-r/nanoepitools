@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="ebi">
+    <serverData>
+      <paths name="ebi">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/code/nanoepiseg" local="$PROJECT_DIR$/../nanoepiseg" web="/" />
+            <mapping deploy="/code/nanoepitools" local="$PROJECT_DIR$" />
+            <mapping deploy="/data/medulloblastoma/analysis" local="$PROJECT_DIR$/../medulloblastoma_analysis" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

@@ -34,13 +34,13 @@ class PlotArchiver:
         self.project = project
         if config is None:
             config = dict()
-        set_if_not_in_dict(config, 'plot_archive_dir',
-                           Path.home().joinpath('nanoepitools_plots'))
-        set_if_not_in_dict(config, 'filetype', 'pdf')
+        set_if_not_in_dict(
+            config, "plot_archive_dir", Path.home().joinpath("nanoepitools_plots")
+        )
+        set_if_not_in_dict(config, "filetype", "pdf")
         self.config = config
 
-        self.project_path = Path(self.config['plot_archive_dir']).joinpath(
-            self.project)
+        self.project_path = Path(self.config["plot_archive_dir"]).joinpath(self.project)
         self.pdf: PDFPagesWrapper = None
 
     def ensure_project_path_exists(self):
@@ -48,11 +48,11 @@ class PlotArchiver:
 
     def get_plot_path(self, key, filetype=None):
         if filetype is None:
-            filetype = self.config['filetype']
-        filename = '{key}.{ft}'.format(key=key, ft=filetype)
+            filetype = self.config["filetype"]
+        filename = "{key}.{ft}".format(key=key, ft=filetype)
         return self.project_path.joinpath(filename)
 
-    def savefig(self, key='figure', fig=None, close=True):
+    def savefig(self, key="figure", fig=None, close=True):
         self.ensure_project_path_exists()
         if fig is None:
             fig = plt.gcf()
@@ -77,12 +77,12 @@ class PlotArchiver:
 
     def bokeh_open_html(self, key):
         self.ensure_project_path_exists()
-        path = self.get_plot_path(key, 'html')
+        path = self.get_plot_path(key, "html")
         output_file(path)
 
     def open_multipage_pdf(self, key):
         self.ensure_project_path_exists()
-        path = self.get_plot_path(key, 'pdf')
+        path = self.get_plot_path(key, "pdf")
         self.pdf = PDFPagesWrapper(self, path)
         return self.pdf
 
@@ -95,6 +95,6 @@ class PlotArchiver:
         """
         fig = plt.figure(dpi=200, **kwargs)
         fig.set_tight_layout(True)
-        fig.patch.set_facecolor('w')
+        fig.patch.set_facecolor("w")
         fig.autolayout = False
         return fig

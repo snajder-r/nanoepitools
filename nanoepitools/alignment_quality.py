@@ -6,14 +6,23 @@ import pysam
 
 def read_alignment(dirname, fileprefix):
     return count_reads_reverse_supplementary(
-        [f for f in Path(dirname).iterdir() if f.name.endswith(
-            '.bam') and f.name.startswith(fileprefix)])
+        [
+            f
+            for f in Path(dirname).iterdir()
+            if f.name.endswith(".bam") and f.name.startswith(fileprefix)
+        ]
+    )
 
 
 class AlignmentTypeTotals:
-    def __init__(self, total_single_alignment, total_chimeric,
-                 total_nonchimeric_multi, total_inverse_repeats,
-                 total_only_supp):
+    def __init__(
+        self,
+        total_single_alignment,
+        total_chimeric,
+        total_nonchimeric_multi,
+        total_inverse_repeats,
+        total_only_supp,
+    ):
         self.total_single_alignment = total_single_alignment
         self.total_chimeric = total_chimeric
         self.total_nonchimeric_multi = total_nonchimeric_multi
@@ -39,21 +48,21 @@ def classify_alignment(mapping, read):
 
     if len(alignments) > 1:
         if has_primary == 0:
-            return 'only_supp'
+            return "only_supp"
         elif has_supplementary == 0:
-            return 'nonchimeric_multi'
+            return "nonchimeric_multi"
         elif has_fwd_strand > 0 and has_rev_strand > 0:
-            return 'inverse_repeat'
+            return "inverse_repeat"
         else:
-            return 'chimeric'
+            return "chimeric"
     else:
-        return 'unique'
+        return "unique"
 
 
 def categorize_reads(mapping):
     ret = dict()
     for read in mapping.keys():
-        alignment_type = classify_alignment(mapping,read)
+        alignment_type = classify_alignment(mapping, read)
         if alignment_type not in ret.keys():
             ret[alignment_type] = []
         ret[alignment_type].append(read)
@@ -68,19 +77,23 @@ def count_types_of_alignments(mapping):
     total_only_supp = 0
     for read in mapping.keys():
         alignment_type = classify_alignment(mapping, read)
-        if alignment_type == 'only_supp':
+        if alignment_type == "only_supp":
             total_only_supp += 1
-        elif alignment_type == 'nonchimeric_multi':
+        elif alignment_type == "nonchimeric_multi":
             total_nonchimeric_multi += 1
-        elif alignment_type == 'inverse_repeat':
+        elif alignment_type == "inverse_repeat":
             total_inverse_repeats += 1
-        elif alignment_type == 'chimeric':
+        elif alignment_type == "chimeric":
             total_chimeric += 1
-        elif alignment_type == 'unique':
+        elif alignment_type == "unique":
             total_single_alignment += 1
-    return AlignmentTypeTotals(total_single_alignment, total_chimeric,
-                               total_nonchimeric_multi, total_inverse_repeats,
-                               total_only_supp)
+    return AlignmentTypeTotals(
+        total_single_alignment,
+        total_chimeric,
+        total_nonchimeric_multi,
+        total_inverse_repeats,
+        total_only_supp,
+    )
 
 
 def count_reads_reverse_supplementary(bamfiles, add_qual=False):
@@ -95,9 +108,8 @@ def count_reads_reverse_supplementary(bamfiles, add_qual=False):
                 reverse = x.flag & 16 == 16
                 supplementary = x.flag & 2048 == 2048
                 if add_qual:
-                    qual = np.array([c for c in x.qual.encode('ascii')])
-                    read_mapping[x.query_name].append((reverse,
-                                                       supplementary, qual))
+                    qual = np.array([c for c in x.qual.encode("ascii")])
+                    read_mapping[x.query_name].append((reverse, supplementary, qual))
                 else:
                     read_mapping[x.query_name].append((reverse, supplementary))
     return read_mapping

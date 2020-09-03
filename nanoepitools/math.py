@@ -19,8 +19,8 @@ def p_to_llr(p, prior=0.5):
     return -np.log(prior * (1 - p) / (p * (1 - prior)))
 
 
-def llr_to_uncertainty(llr, method='linear'):
-    if method == 'linear':
+def llr_to_uncertainty(llr, method="linear"):
+    if method == "linear":
         p = llr_to_p(llr)
         return 0.5 - np.abs(0.5 - p)
 

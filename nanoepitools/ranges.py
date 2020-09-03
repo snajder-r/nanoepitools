@@ -34,8 +34,9 @@ def intersect_locations_with_ranges(locations, ranges, nonevalue=-1):
              region, or None if the location is in no region
     """
 
-    region_membership = pd.Series(data=nonevalue, index=locations.index,
-                                  dtype=ranges.index.dtype)
+    region_membership = pd.Series(
+        data=nonevalue, index=locations.index, dtype=ranges.index.dtype
+    )
 
     en_ranges = enumerate(ranges.itertuples())
     en_loc = enumerate(locations.itertuples())
@@ -44,31 +45,31 @@ def intersect_locations_with_ranges(locations, ranges, nonevalue=-1):
     _, loc = next(en_loc)
 
     try:
-        '''
+        """
         When accessing the tuples, remember:
             loc[0]: cpg index
             loc[1]: location
             region[0]: region index
             region[1]: start site
             region[2]: end site
-         '''
+        """
         while True:
-            ''' If location is behind region, spool location '''
+            """ If location is behind region, spool location """
             while loc[1] < region[1]:
                 _, loc = next(en_loc)
 
-            ''' If location is past region, spool region '''
+            """ If location is past region, spool region """
             while loc[1] > region[2]:
                 _, region = next(en_ranges)
 
-            ''' Check all the constraints '''
+            """ Check all the constraints """
             if region[1] <= loc[1] <= region[2]:
                 region_membership[loc[0]] = region[0]
             else:
-                ''' This happens if we spooled the region past the location '''
+                """ This happens if we spooled the region past the location """
                 pass
 
-            ''' Get next cpg location '''
+            """ Get next cpg location """
             _, loc = next(en_loc)
 
     except StopIteration:

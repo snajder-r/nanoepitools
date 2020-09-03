@@ -9,7 +9,6 @@ def pandas_index_intersect(*argc) -> pd.Index:
     """
     en = enumerate(argc)
     ret = next(en)[1].index
-    for _,series in en:
+    for _, series in en:
         ret = ret.intersection(series.index)
     return ret
-

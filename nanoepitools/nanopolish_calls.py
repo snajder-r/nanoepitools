@@ -5,7 +5,7 @@ import pandas as pd
 import re
 import scipy.sparse as sp
 from pathlib import Path
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Iterable, Tuple, Optional
 
 import nanoepitools.math as nem
 
@@ -49,18 +49,15 @@ def load_merged_nanopore_metcalls(
     chroms: List[str],
     mettypes: List[str] = ["cpg", "gpc", "dam"],
 ) -> Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
-    """
-    Loads pickled nanopolish methylation calls as pandas dataframes and
-    organizes them by sample, chromosome, and methylation type.
+    """Loads pickled nanopolish methylation calls as pandas dataframes
+    and organizes them by sample, chromosome, and methylation type.
 
     The output is a cascading tree of dictionaries:
-        samplename -> (chromosome -> (methylation type -> dataframe))
-
+         samplename -> (chromosome -> (methylation type -> dataframe))
     :param input_folder: folder containing subfolders for each sample
     :param samples: which samples to include
     :param chroms: which chromosomes to include
-    :param mettypes: which methylation types to include (default: cpg,
-    gpc and dam)
+    :param mettypes: which methylation types to include (default: cpg, gpc and dam)
     :return: tree of dictionaries with dataframes as leafes
     """
     base_filename = "{chrom}_met_{mettype}.pkl"
@@ -172,13 +169,12 @@ class SparseMethylationMatrixContainer:
         }
 
     def get_submatrix(self, start: int, end: int) -> SparseMethylationMatrixContainer:
-        """
-        Creates a submatrix containing only the genomic positions between
-        start and end index (note: start and end are matrix indices,
-        not genomic coordinates)
-        :param start: start index in matrix
-        :param end: end index in matrix
-        :return: sub-matrix container
+        """Creates a submatrix containing only the genomic positions
+        between start and end index (note: start and end are matrix
+        indices, not genomic coordinates)
+
+        :param start: start index in matrix :param end: end index in
+        matrix :return: sub-matrix container
         """
         sub_met_matrix = self.met_matrix[:, start:end]
         sub_genomic_coord = self.genomic_coord[start:end]
@@ -193,11 +189,11 @@ class SparseMethylationMatrixContainer:
     def get_submatrix_from_read_names(
         self, allowed_reads: List[str]
     ) -> SparseMethylationMatrixContainer:
-        """
-        Creates a submatrix containing only the given reads and their methylation calls
-        not genomic coordinates)
-        :param allowed_reads: The read names to keep
-        :return: sub-matrix container
+        """Creates a submatrix containing only the given reads and their
+        methylation calls not genomic coordinates)
+
+        :param allowed_reads: The read names to keep :return: sub-matrix
+        container
         """
         idx = [read in allowed_reads for read in self.read_names]
         sub_met_matrix = self.met_matrix[idx, :]
@@ -286,29 +282,33 @@ def metcall_dataframe_to_llr_matrix(allmet: pd.DataFrame):
 
 
 def get_only_single_cpg_calls(metcall: pd.DataFrame):
-    """
-    Specifically for methylation calls for CpGs. Since Nanopolish groups calls
-    that are close to each other, this function filters out only single-cpg
-    calls (for things like k-mer uncertainty analysis)
-    :param metcall: the dataframe as produced by nanopolis
-    :return:
+    """Specifically for methylation calls for CpGs. Since Nanopolish
+    groups calls that are close to each other, this function filters out
+    only single- cpg calls (for things like k-mer uncertainty analysis)
+
+    :param metcall: the dataframe as produced by nanopolish
+    :return: Subset of methylation calls which are for single CpG/GpC sites
+    (as opposed to grouped calls)
     """
     return metcall.loc[metcall["sequence"].map(lambda x: len(x) == 11)]
 
 
 def add_sixmer_column(metcall_onecpg: pd.DataFrame):
-    """
-    Specifically for methylation calls for CpGs. Adds a column with the
-    sixmer around the CpG site. Assumes only single cpg calls
-    :param metcall_onecpg: the dataframe as produced by nanopolis
+    """Specifically for methylation calls for CpGs and GpCs. Adds a
+    column with the sixmer around the CpG/GpC site. Assumes only single
+    CpG/GpC calls.
+
+    :param metcall_onecpg: the dataframe as produced by nanopolish
     """
     assert all(metcall_onecpg["sequence"].map(lambda x: len(x) == 11))
     metcall_onecpg["sixmer"] = metcall_onecpg["sequence"].map(lambda x: x[3:-2])
 
 
 def compute_kmer_uncertainty(metcall: pd.DataFrame, uncertainty_method="linear"):
-    """
-    :param metcall: the dataframe as produced by nanopolis
+    """Computes summary of uncertainties for each k-mer, showing the
+    dependence of methylation call uncertainty and sequence context.
+
+    :param metcall: the dataframe as produced by nanopolish.
     :param uncertainty_method: the uncertainty method. See docstring of
     llr_to_uncertainty. Default: 'linear'
     :return: series with kmers as index and uncertainty as values
@@ -325,10 +325,8 @@ def compute_kmer_uncertainty(metcall: pd.DataFrame, uncertainty_method="linear")
 
 
 def count_kmer_incidents(metcall: pd.DataFrame):
-    """
-    :param metcall: the dataframe as produced by nanopolis
-    :return: series with kmers as index and counts as values
-    """
+    """:param metcall: the dataframe as produced by nanopolis
+    :return: series with kmers as index and counts as values."""
     metcall_onecpg = get_only_single_cpg_calls(metcall).copy()
     add_sixmer_column(metcall_onecpg)
     metcall_onecpg = metcall_onecpg[["sixmer", "log_lik_ratio"]]
@@ -337,10 +335,9 @@ def count_kmer_incidents(metcall: pd.DataFrame):
 
 
 def compute_kmer_error(metcall: pd.DataFrame, error_method="llr"):
-    """
-    :param metcall: the dataframe as produced by nanopolis
-    :param error_method: what method to use to compute the error.
-    Default: 'llr'
+    """:param metcall: the dataframe as produced by nanopolis.
+
+    :param error_method: what method to use to compute the error. Default: 'llr'
     :return: series with kmers as index and errors as values
     """
     metcall_onecpg = get_only_single_cpg_calls(metcall).copy()
@@ -361,14 +358,14 @@ def compute_kmer_error(metcall: pd.DataFrame, error_method="llr"):
 def compute_read_methylation_betascore(
     metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20
 ) -> pd.Series:
-    """
-    Computes for each read a beta score of methylation
+    """Computes for each read a beta score of methylation.
+
     :param metcall: the dataframe as produced by nanopolish
-    :param llr_threshold: exclude calls that are closer than this threshold
-    to zero
+    :param llr_threshold: exclude calls that are closer than this threshold to
+    zero
     :param min_calls: exclude reads with fewer (included) calls
-    :return: A pandas series with the read name as index and beta scores as
-    values
+    :return: A pandas series with the read name as index and beta scores
+    as values
     """
     metcall = metcall[["read_name", "log_lik_ratio"]].copy()
     metcall["ismet"] = metcall["log_lik_ratio"] > llr_threshold
@@ -377,3 +374,80 @@ def compute_read_methylation_betascore(
     metcall["bs"] = metcall["ismet"] / (metcall["ismet"] + metcall["isunmet"])
     metcall = metcall.loc[(metcall["ismet"] + metcall["isunmet"]) > min_calls]
     return metcall["bs"]
+
+
+def aggregate_met_profile(
+    met_pairs: Iterable[Tuple[int, float, Optional[int]]],
+    pos_dict: Dict[int, int],
+    window_size: int,
+):
+    """Computes a methylation profile for a fixed size window in one
+    chromosome, given a dictionary that maps genomic coordinates on a
+    chromosome to a position in the window. This is a helper function
+    for computing an average profile around a type of feature (such as
+    transcription start sites)
+
+    :param met_pairs: an iterable of tuples where the first one is the
+    genomic position (int) and the second the methylation rate (float). A third optional
+    element can be provided for grouped methylation calls. It should contain a list with
+    offsets from the start position.
+    :param pos_dict: a dictionary that maps genomic positions to
+    position in the window
+    :param window_size: The size of the window in basepairs
+    :returns two numpy arrays of shape (window_size, ). The first one is the totals and
+    the second one the count of values for each position in the window.
+    """
+    if not all([0 <= v < window_size for v in pos_dict.values()]):
+        raise ValueError("Trying to map positions outside of window range")
+
+    met_totals = np.zeros(window_size)
+    met_counts = np.zeros(window_size)
+    for met_row in met_pairs:
+        start_pos = met_row[0]
+        ratio = met_row[1]
+        offsets = [0]
+        if len(met_row) == 3:
+            # offsets for multiple calls have been provided
+            offsets = met_row[2]
+        for offset in offsets:
+            absolute_pos = start_pos + offset
+            if absolute_pos not in pos_dict.keys():
+                continue
+            relative_pos = pos_dict[absolute_pos]
+            met_totals[relative_pos] += ratio
+            met_counts[relative_pos] += 1
+    return met_totals, met_counts
+
+
+def compute_average_metrate_profile_all_chrom(
+    met_pairs_per_chrom: Dict[str, Iterable[Tuple[int, float, Optional[int]]]],
+    pos_dict_per_chrom: Dict[str, Dict[int, int]],
+    window_size: int,
+) -> np.ndarray:
+    """Computes a methylation profile for a fixed size window over
+    multiple chromosomes, given a dictionary per chromosome that maps
+    genomic coordinates to a position in the window.
+
+    :param met_pairs_per_chrom: Key is chromosome name, value is iterable of tuples,
+    where each tuple consists of the genomic coordinate on that chromosome and the
+    methylation rate. A third optional element can be provided for grouped methylation
+    calls. It should contain a list with offsets from the start position.
+    :param pos_dict_per_chrom: Key is chromosome, value is a dictionary that
+    maps the genomic coordinate on that chromosome to a position in the
+    :param window_size: The size of the window in basepairs window
+    :return: a numpy array of shape (window_size,) containing the average methylation
+    rate for each site in the window
+    """
+    met_totals = np.zeros(window_size)
+    met_count = np.zeros(window_size)
+    for chrom in met_pairs_per_chrom.keys():
+        # Builds a dictionary that maps each genomic position to their relative
+        # (to the TSS) position
+        pos_dict = pos_dict_per_chrom[chrom]
+        met_pairs = met_pairs_per_chrom[chrom]
+        met_totals_chrom, met_count_chrom = aggregate_met_profile(
+            met_pairs, pos_dict, window_size
+        )
+        met_totals += met_totals_chrom
+        met_count += met_count_chrom
+    return met_totals / met_count

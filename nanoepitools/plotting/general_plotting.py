@@ -64,7 +64,7 @@ class PlotArchiver:
         if close:
             plt.close(fig)
 
-    def saveandshow(self, key, fig=None):
+    def saveandshow(self, key='figure', fig=None):
         if fig is None:
             fig = plt.gcf()
         self.savefig(key, fig=fig, close=False)

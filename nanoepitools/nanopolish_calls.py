@@ -128,6 +128,7 @@ class SparseMethylationMatrixContainer:
         read_names: np.ndarray,
         genomic_coord_start: np.ndarray,
         genomic_coord_end: np.ndarray,
+        read_samples: np.ndarray = None
     ):
         assert met_matrix.shape[0] == len(read_names)
         assert met_matrix.shape[1] == len(genomic_coord_start)
@@ -140,6 +141,7 @@ class SparseMethylationMatrixContainer:
         self.coord_to_index_dict = {
             genomic_coord_start[i]: i for i in range(len(genomic_coord_start))
         }
+        self.read_samples = read_samples
 
     def get_submatrix_from_genomic_locations(
         self, start_base: int, end_base: int
@@ -160,6 +162,8 @@ class SparseMethylationMatrixContainer:
             self.read_names = self.read_names[read_has_values]
             self.genomic_coord = self.genomic_coord[site_has_values]
             self.genomic_coord_end = self.genomic_coord_end[site_has_values]
+            if self.read_samples is not None:
+                self.read_samples = self.read_samples[read_has_values]
 
             if (~read_has_values).sum() == 0 and (~site_has_values).sum() == 0:
                 break
@@ -181,7 +185,7 @@ class SparseMethylationMatrixContainer:
         sub_genomic_coord_end = self.genomic_coord_end[start:end]
 
         ret = SparseMethylationMatrixContainer(
-            sub_met_matrix, self.read_names, sub_genomic_coord, sub_genomic_coord_end
+            sub_met_matrix, self.read_names, sub_genomic_coord, sub_genomic_coord_end, read_samples=self.read_samples
         )
         ret._compact()
         return ret
@@ -198,9 +202,10 @@ class SparseMethylationMatrixContainer:
         idx = [read in allowed_reads for read in self.read_names]
         sub_met_matrix = self.met_matrix[idx, :]
         sub_read_names = self.read_names[idx]
+        sub_read_samles = self.read_samples[idx] if self.read_samples is not None else None
 
         ret = SparseMethylationMatrixContainer(
-            sub_met_matrix, sub_read_names, self.genomic_coord, self.genomic_coord_end
+            sub_met_matrix, sub_read_names, self.genomic_coord, self.genomic_coord_end, read_samples = sub_read_samles
         )
         ret._compact()
         return ret

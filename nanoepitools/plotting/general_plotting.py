@@ -11,6 +11,12 @@ def set_if_not_in_dict(d, k, v):
         d[k] = v
 
 
+def set_figure_defaults(fig):
+    fig.set_tight_layout(True)
+    fig.patch.set_facecolor("w")
+    fig.autolayout = False
+
+
 def density_plot(x, y, *argc, **kwargs):
     density = scipy.stats.gaussian_kde(y)
     plt.plot(density(x), *argc, **kwargs)
@@ -94,7 +100,5 @@ class PlotArchiver:
         :returns: return value if plt.figure
         """
         fig = plt.figure(dpi=200, **kwargs)
-        fig.set_tight_layout(True)
-        fig.patch.set_facecolor("w")
-        fig.autolayout = False
+        set_figure_defaults(fig)
         return fig

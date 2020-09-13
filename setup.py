@@ -18,5 +18,11 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
+    install_requires = [
+        "numpy>=1.14.0",
+        "h5py>=2.9.0",
+        "pandas>=1.0.3",
+        "matplotlib>=3.3.0",
+        ],
     python_requires='>=3.6',
 )

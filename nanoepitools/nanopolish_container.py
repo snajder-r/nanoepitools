@@ -1,32 +1,62 @@
+from __future__ import annotations
 import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import logging
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Tuple, Dict
 
 from nanoepitools.nanopolish_calls import SparseMethylationMatrixContainer
 
 
-def create_or_extend(parent_group, name, shape, data, **kwargs):
-    if name not in parent_group.keys():
-        parent_group.create_dataset(name=name, shape=shape, data=data, **kwargs)
-    else:
-        num_data = data.shape[0] if hasattr(data, "shape") else len(data)
-        ds = parent_group[name]
-        old_shape = ds.shape
-        new_shape = (
-            old_shape[i] + (num_data if i == 0 else 0) for i in range(len(old_shape))
-        )
-        ds.resize(new_shape)
-
-        ds[old_shape[0] :] = data
-
-        print("Extended from ", old_shape, " to ", ds.shape)
+def unique_genomic_range(genomic_ranges: nd.array):
+    """
+    :param genomic_ranges: List of tuples, must be PRESORTED
+    :return:
+    """
+    diff = np.ones_like(genomic_ranges)
+    diff[1:] = genomic_ranges[1:] - genomic_ranges[:-1]
+    idx = diff[:, 0].nonzero()[0] & diff[:, 1].nonzero()[0]
+    return genomic_ranges[idx, :]
 
 
 def argsort_ranges(chrom_group):
     return np.argsort(chrom_group["range"][:, 0], kind="mergesort")
+
+
+def create_sparse_matrix_from_samples(sample_llrs: Dict[str: MethlyationValuesContainer]) -> SparseMethylationMatrixContainer:
+    samples = list(sample_llrs.keys())
+    read_names = {s: [r.decode() for r in sample_llrs[s].get_read_names_unique()] for s in samples}
+    genomic_ranges = {s: [r for r in sample_llrs[s].get_ranges_unique()] for s in samples}
+    
+    sample_assignment = [s for s in samples for _ in read_names[s]]
+    read_names = [r for s in samples for r in read_names[s]]
+    genomic_ranges = [r for s in samples for r in genomic_ranges[s]]
+    genomic_ranges = np.array(sorted(genomic_ranges, key=lambda x: x[0]*10E10+x[1]))
+    genomic_ranges = unique_genomic_range(genomic_ranges)
+    
+    coord_to_index_dict = {
+        genomic_ranges[i, 0]: i for i in range(len(genomic_ranges))
+    }
+
+    met_matrix = np.zeros((len(read_names), len(genomic_ranges)))
+    read_dict = {read_names[i]: i for i in range(len(read_names))}
+
+    for sample, llrs in sample_llrs.items():
+        range_ds = llrs.get_ranges()
+        read_name_ds = llrs.get_read_names()
+        llr_ds = llrs.get_llrs()
+        for i in range(len(range_ds)):
+            read_i = read_dict[read_name_ds[i].decode()]
+            range_i = coord_to_index_dict[range_ds[i, 0]]
+            met_matrix[read_i, range_i] = llr_ds[i]
+            
+    met_matrix = sp.csc_matrix(met_matrix)
+    return SparseMethylationMatrixContainer(
+        met_matrix, read_names, genomic_ranges[:, 0], genomic_ranges[:, 1], read_samples = sample_assignment
+    )
+
 
 
 class MethlyationValuesContainer:
@@ -43,11 +73,7 @@ class MethlyationValuesContainer:
 
     def get_ranges_unique(self):
         ranges_ds = self.chromosome.h5group["range"][self.start : self.end]
-        # Since they are already pre-sorted, this is fast way to get uniques:
-        diff = np.ones_like(ranges_ds)
-        diff[1:] = ranges_ds[1:] - ranges_ds[:-1]
-        idx = diff[:, 0].nonzero()[0] & diff[:, 1].nonzero()[0]
-        return ranges_ds[idx, :]
+        return unique_genomic_range(ranges_ds)
 
     def get_ranges(self):
         return self.chromosome.h5group["range"][self.start : self.end, :]
@@ -164,29 +190,117 @@ class ChromosomeContainer:
 
         return MethlyationValuesContainer(self, earliest_pos, latest_pos)
 
+    def create_chunk_index(self, force_update=False):
+        if "chunk_ranges" in self.h5group.keys() and not force_update:
+            return
+
+        index = np.zeros((self.get_number_of_chunks(), 2))
+        num_ranges = self.h5group["range"].shape[0]
+        for chunk_i, start_i in enumerate(range(0, num_ranges, self.chunk_size)):
+            end_i = min(num_ranges - 1, start_i + self.chunk_size)
+            index[chunk_i, 0] = self.h5group["range"][start_i, 0]
+            index[chunk_i, 1] = self.h5group["range"][end_i, 1]
+
+        if "chunk_ranges" in self.h5group.keys():
+            self.h5group["chunk_ranges"].resize(index.shape)
+            self.h5group["chunk_ranges"][:] = index
+        else:
+            self.h5group.create_dataset(
+                name="chunk_ranges", data=index, dtype=int, maxshape=(None, 2)
+            )
+        self.h5group.attrs["chunk_size"] = self.chunk_size
+
+    def get_values_in_range(self, genomic_start, genomic_end):
+        if "chunk_size" not in self.h5group.attrs.keys():
+            raise ValueError(
+                "Random access to ranges only allowed if index exists. Call create_chunk_index"
+            )
+        index_chunk_size = self.h5group.attrs["chunk_size"]
+        index = self.h5group["chunk_ranges"][:]
+
+        # First find the right chunk for start and end
+
+        chunk_indices = np.arange(len(index))[
+            (index[:, 0] < genomic_end) & (genomic_start <= index[:, 1])
+        ]
+
+        if len(chunk_indices) == 0:
+            # If no chunk contains these values
+            return None
+
+        start_chunk = chunk_indices[0]
+        end_chunk = chunk_indices[-1]
+
+        # Find precise start point
+        start_index = start_chunk * index_chunk_size
+        start_chunk_start = start_chunk * index_chunk_size
+        start_chunk_end = min(len(self) - 1, (start_chunk + 1) * index_chunk_size)
+        start_chunk_ranges = self.h5group["range"][start_chunk_start:start_chunk_end, :]
+        start_in_range_indices = np.arange(len(start_chunk_ranges))[
+            start_chunk_ranges[:, 1] >= genomic_start
+        ]
+        if len(start_in_range_indices) > 0:
+            # Add index of first value that is in the range
+            start_index += start_in_range_indices[0]
+
+        # Find precise end point
+        end_index = end_chunk * index_chunk_size
+        end_chunk_start = end_chunk * index_chunk_size
+        end_chunk_end = min(len(self) - 1, (end_chunk + 1) * index_chunk_size)
+        end_chunk_ranges = self.h5group["range"][end_chunk_start:end_chunk_end, :]
+        end_oor_indices = np.arange(len(end_chunk_ranges))[
+            end_chunk_ranges[:, 0] >= genomic_end
+        ]
+        if len(end_oor_indices) > 0:
+            # Add index of first value that is out of range
+            end_index += end_oor_indices[0]
+        else:
+            # If all values in the chunk are in the range
+            end_index = min(len(self), end_index + index_chunk_size)
+
+        return MethlyationValuesContainer(self, start_index, end_index)
+
 
 class MetcallH5Container:
     def __init__(
-        self, h5filepath: Union[str, Path], mode: str = "r", chunk_size=100000
+        self, h5filepath: Union[str, Path], mode: str = "r", chunk_size=int(10e5)
     ):
         self.h5filepath = h5filepath
         self.mode = mode
         self.chunk_size = chunk_size
         self.h5_fp = None
         self.chrom_container_cache = {}
+        self.log = logging.getLogger("NET:MetH5")
+        self.h5_fp = h5py.File(self.h5filepath, mode=self.mode)
 
     def __enter__(self):
-        self.h5_fp = h5py.File(self.h5filepath, mode=self.mode)
         return self
 
     def __exit__(self, exittype, exitvalue, traceback):
         self.h5_fp.close()
 
+    def create_or_extend(self, parent_group, name, shape, data, **kwargs):
+        if name not in parent_group.keys():
+            parent_group.create_dataset(name=name, shape=shape, data=data, **kwargs)
+        else:
+            num_data = data.shape[0] if hasattr(data, "shape") else len(data)
+            ds = parent_group[name]
+            old_shape = ds.shape
+            new_shape = (
+                old_shape[i] + (num_data if i == 0 else 0)
+                for i in range(len(old_shape))
+            )
+            ds.resize(new_shape)
+
+            ds[old_shape[0] :] = data
+
+            self.log.debug("Extended from %s to %s" % (old_shape, ds.shape))
+
     def add_to_h5_file(self, cur_df):
         main_group = self.h5_fp.require_group("chromosomes")
 
         for chrom in set(cur_df["chromosome"]):
-            print(chrom)
+            self.log.debug("Adding sites from chromosome %s to h5 file" % chrom)
 
             chrom_calls = cur_df.loc[cur_df["chromosome"] == chrom]
             n = chrom_calls.shape[0]
@@ -196,7 +310,7 @@ class MetcallH5Container:
 
             chrom_group = main_group.require_group(chrom)
 
-            create_or_extend(
+            self.create_or_extend(
                 parent_group=chrom_group,
                 name="range",
                 shape=(n, 2),
@@ -206,7 +320,7 @@ class MetcallH5Container:
                 chunks=(self.chunk_size, 2),
                 maxshape=(None, 2),
             )
-            create_or_extend(
+            self.create_or_extend(
                 parent_group=chrom_group,
                 name="llr",
                 shape=(n,),
@@ -216,7 +330,7 @@ class MetcallH5Container:
                 chunks=(self.chunk_size,),
                 maxshape=(None,),
             )
-            create_or_extend(
+            self.create_or_extend(
                 parent_group=chrom_group,
                 name="read_name",
                 shape=(n,),
@@ -227,7 +341,10 @@ class MetcallH5Container:
                 maxshape=(None,),
             )
 
+            # TODO think of a way to do this that doesn't require loading everything
+            # in memory
             sort_order = argsort_ranges(chrom_group)
+            logging.debug("Re-sorting h5 entries for chromosome %s" % chrom)
             chrom_group["range"][:] = np.array(chrom_group["range"])[sort_order]
             chrom_group["llr"][:] = np.array(chrom_group["llr"])[sort_order]
             chrom_group["read_name"][:] = np.array(chrom_group["read_name"])[sort_order]
@@ -241,7 +358,7 @@ class MetcallH5Container:
 
     def __getitem__(self, chromosome: str):
         if chromosome not in self.h5_fp["chromosomes"].keys():
-            return ValueError("No data for this chromosome in container")
+            return None
         if chromosome in self.chrom_container_cache.keys():
             return self.chrom_container_cache[chromosome]
         else:
@@ -250,3 +367,7 @@ class MetcallH5Container:
             )
             self.chrom_container_cache[chromosome] = ret
             return ret
+
+    def create_chunk_index(self, force_update=False):
+        for chromosome in self.get_chromosomes():
+            self[chromosome].create_chunk_index(force_update=force_update)

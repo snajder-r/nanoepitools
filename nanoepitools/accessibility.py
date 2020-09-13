@@ -58,7 +58,7 @@ def parse_line(line):
 
 class AccessibilityProfile:
     def __init__(self, entries: List[AccessibilityEntry]):
-        self.chrom_dict = dict()
+        self.chrom_dict = {}
         for entry in entries:
             if entry.chrom not in self.chrom_dict.keys():
                 self.chrom_dict[entry.chrom] = [[], []]  # fwd and rev strand
@@ -81,5 +81,20 @@ class AccessibilityProfile:
             entries = [parse_line(x.strip()) for x in f.readlines()]
 
         ret = AccessibilityProfile(entries)
+
+        return ret
+
+    @staticmethod
+    def read_from_filelist(filenames):
+        all_entries = []
+        for filename in filenames:
+            with open(filename, "r") as f:
+                # skip header
+                f.readline()
+                # Parse rest
+                entries = [parse_line(x.strip()) for x in f.readlines()]
+                all_entries = all_entries + entries
+
+        ret = AccessibilityProfile(all_entries)
 
         return ret

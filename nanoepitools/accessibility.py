@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List
-
+import logging
 
 class AccessibilityEntry:
     def __init__(
@@ -88,6 +88,7 @@ class AccessibilityProfile:
     def read_from_filelist(filenames):
         all_entries = []
         for filename in filenames:
+            logging.info('Reading %s' % filename)
             with open(filename, "r") as f:
                 # skip header
                 f.readline()

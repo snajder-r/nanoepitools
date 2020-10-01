@@ -276,8 +276,11 @@ class MetcallH5Container:
     def __enter__(self):
         return self
 
-    def __exit__(self, exittype, exitvalue, traceback):
+    def close(self):
         self.h5_fp.close()
+
+    def __exit__(self, exittype, exitvalue, traceback):
+        self.close()
 
     def create_or_extend(self, parent_group, name, shape, data, **kwargs):
         if name not in parent_group.keys():

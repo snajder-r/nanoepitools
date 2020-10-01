@@ -190,6 +190,26 @@ class SparseMethylationMatrixContainer:
         ret._compact()
         return ret
 
+    def get_submatrix_from_read_mask(
+        self, allowed_reads: np.ndarray()
+    ) -> SparseMethylationMatrixContainer:
+        """Creates a submatrix containing only the given reads and their
+        methylation calls not genomic coordinates)
+
+        :param allowed_reads: boolean array with length of number of reads
+        :return: sub-matrix container
+        """
+        idx = allowed_reads
+        sub_met_matrix = self.met_matrix[idx, :]
+        sub_read_names = self.read_names[idx]
+        sub_read_samles = self.read_samples[idx] if self.read_samples is not None else None
+
+        ret = SparseMethylationMatrixContainer(
+            sub_met_matrix, sub_read_names, self.genomic_coord, self.genomic_coord_end, read_samples = sub_read_samles
+        )
+        ret._compact()
+        return ret
+    
     def get_submatrix_from_read_names(
         self, allowed_reads: List[str]
     ) -> SparseMethylationMatrixContainer:
@@ -200,15 +220,7 @@ class SparseMethylationMatrixContainer:
         container
         """
         idx = [read in allowed_reads for read in self.read_names]
-        sub_met_matrix = self.met_matrix[idx, :]
-        sub_read_names = self.read_names[idx]
-        sub_read_samles = self.read_samples[idx] if self.read_samples is not None else None
-
-        ret = SparseMethylationMatrixContainer(
-            sub_met_matrix, sub_read_names, self.genomic_coord, self.genomic_coord_end, read_samples = sub_read_samles
-        )
-        ret._compact()
-        return ret
+        return self.get_submatrix_from_read_mask(idx)
 
     def get_genomic_region(self):
         return self.genomic_coord[0], self.genomic_coord[-1]

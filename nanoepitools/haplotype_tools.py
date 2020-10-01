@@ -85,13 +85,15 @@ class PhaseSetCollection:
 
 def extract_read_haplotype_assignment(
     bamfile: Union[str, Path],
-    chroms: List[str],
+    chroms: List[str] = None,
     read_names: List[str] = None,
     return_unphased: bool = False,
 ) -> PhaseSetCollection:
     phase_sets = PhaseSetCollection()
     with pysam.AlignmentFile(bamfile, "rb") as f:
         segment: pysam.AlignedSegment
+        if chroms is None:
+            chroms = f.header.references
         for chrom in chroms:
             for segment in f.fetch(contig=chrom):
                 # Sanity check: either it has both HP and PS, or neither

@@ -25,20 +25,24 @@ def argsort_ranges(chrom_group):
     return np.argsort(chrom_group["range"][:, 0], kind="mergesort")
 
 
-def create_sparse_matrix_from_samples(sample_llrs: Dict[str: MethlyationValuesContainer]) -> SparseMethylationMatrixContainer:
+def create_sparse_matrix_from_samples(
+    sample_llrs: Dict[str:MethlyationValuesContainer],
+) -> SparseMethylationMatrixContainer:
     samples = list(sample_llrs.keys())
-    read_names = {s: [r.decode() for r in sample_llrs[s].get_read_names_unique()] for s in samples}
-    genomic_ranges = {s: [r for r in sample_llrs[s].get_ranges_unique()] for s in samples}
-    
+    read_names = {
+        s: [r.decode() for r in sample_llrs[s].get_read_names_unique()] for s in samples
+    }
+    genomic_ranges = {
+        s: [r for r in sample_llrs[s].get_ranges_unique()] for s in samples
+    }
+
     sample_assignment = [s for s in samples for _ in read_names[s]]
     read_names = [r for s in samples for r in read_names[s]]
     genomic_ranges = [r for s in samples for r in genomic_ranges[s]]
-    genomic_ranges = np.array(sorted(genomic_ranges, key=lambda x: x[0]*10E10+x[1]))
+    genomic_ranges = np.array(sorted(genomic_ranges, key=lambda x: x[0] * 10e10 + x[1]))
     genomic_ranges = unique_genomic_range(genomic_ranges)
-    
-    coord_to_index_dict = {
-        genomic_ranges[i, 0]: i for i in range(len(genomic_ranges))
-    }
+
+    coord_to_index_dict = {genomic_ranges[i, 0]: i for i in range(len(genomic_ranges))}
 
     met_matrix = np.zeros((len(read_names), len(genomic_ranges)))
     read_dict = {read_names[i]: i for i in range(len(read_names))}
@@ -51,12 +55,15 @@ def create_sparse_matrix_from_samples(sample_llrs: Dict[str: MethlyationValuesCo
             read_i = read_dict[read_name_ds[i].decode()]
             range_i = coord_to_index_dict[range_ds[i, 0]]
             met_matrix[read_i, range_i] = llr_ds[i]
-            
+
     met_matrix = sp.csc_matrix(met_matrix)
     return SparseMethylationMatrixContainer(
-        met_matrix, read_names, genomic_ranges[:, 0], genomic_ranges[:, 1], read_samples = sample_assignment
+        met_matrix,
+        read_names,
+        genomic_ranges[:, 0],
+        genomic_ranges[:, 1],
+        read_samples=sample_assignment,
     )
-
 
 
 class MethlyationValuesContainer:
@@ -84,7 +91,12 @@ class MethlyationValuesContainer:
     def get_read_names(self):
         return self.chromosome.h5group["read_name"][self.start : self.end]
 
-    def to_sparse_methylation_matrix(self) -> SparseMethylationMatrixContainer:
+    def get_read_groups(self, group_key):
+        return self.chromosome.h5group["read_groups"][group_key][self.start : self.end]
+
+    def to_sparse_methylation_matrix(
+        self, read_groups_key: str = None
+    ) -> SparseMethylationMatrixContainer:
         read_names = [r.decode() for r in self.get_read_names_unique()]
         genomic_ranges = self.get_ranges_unique()
 
@@ -98,13 +110,28 @@ class MethlyationValuesContainer:
         range_ds = self.get_ranges()
         read_name_ds = self.get_read_names()
         llr_ds = self.get_llrs()
+
+        if read_groups_key is not None:
+            read_groups_ds = self.get_read_groups(read_groups_key)
+            read_samples_dict = {
+                read_name_ds[i].decode(): read_groups_ds[i]
+                for i in range(len(read_groups_ds))
+            }
+            read_samples = [read_samples_dict[r] for r in read_names]
+        else:
+            read_samples = None
+
         for i in range(len(range_ds)):
             read_i = read_dict[read_name_ds[i].decode()]
             range_i = coord_to_index_dict[range_ds[i, 0]]
             met_matrix[read_i, range_i] = llr_ds[i]
         met_matrix = sp.csc_matrix(met_matrix)
         return SparseMethylationMatrixContainer(
-            met_matrix, read_names, genomic_ranges[:, 0], genomic_ranges[:, 1]
+            met_matrix,
+            read_names,
+            genomic_ranges[:, 0],
+            genomic_ranges[:, 1],
+            read_samples=read_samples,
         )
 
 
@@ -171,11 +198,11 @@ class ChromosomeContainer:
         return self.chunk_size * chunk_id + matches[-1]
 
     def get_chunk(self, chunk_id: int, overlap=True):
-        """
-        Returns the values of said chunk, and, if overlap=True, includes values
-        of neighboring chunks if they are in the same genomic ranges, such as
-        to avoid having a subset of reads of one location in one chunk and the
-        rest in the other
+        """Returns the values of said chunk, and, if overlap=True,
+        includes values of neighboring chunks if they are in the same
+        genomic ranges, such as to avoid having a subset of reads of one
+        location in one chunk and the rest in the other.
+
         :param chunk_id: The chunk id (see get_chunk_ids)
         :param overlap: Whether to look for same-region locations in
         neighboring chunks
@@ -268,7 +295,7 @@ class MetcallH5Container:
         self.h5filepath = h5filepath
         self.mode = mode
         self.chunk_size = chunk_size
-        self.h5_fp = None
+        self.h5_fp: h5py.File = None
         self.chrom_container_cache = {}
         self.log = logging.getLogger("NET:MetH5")
         self.h5_fp = h5py.File(self.h5filepath, mode=self.mode)
@@ -374,3 +401,29 @@ class MetcallH5Container:
     def create_chunk_index(self, force_update=False):
         for chromosome in self.get_chromosomes():
             self[chromosome].create_chunk_index(force_update=force_update)
+
+    def annotate_read_groups(
+        self, read_group_key: str, map: Dict[str, int], exists_ok=False, overwrite=False
+    ):
+        for chromosome in self.get_chromosomes():
+            chr_g = self.h5_fp["chromosomes"][chromosome]
+            rg_g = chr_g.require_group("read_groups")
+            if read_group_key in rg_g.keys():
+                if not exists_ok:
+                    raise ValueError(
+                        "Cannot annotate read groups - group assignment with this key "
+                        "already exists"
+                    )
+                elif not overwrite:
+                    continue
+
+            rg_assignment = [
+                map.get(read.decode(), -1) for read in chr_g["read_name"][:]
+            ]
+            rg_ds = rg_g.require_dataset(
+                name=read_group_key,
+                dtype=int,
+                shape=(len(rg_assignment),),
+                maxshape=(None,),
+            )
+            rg_ds[:] = rg_assignment

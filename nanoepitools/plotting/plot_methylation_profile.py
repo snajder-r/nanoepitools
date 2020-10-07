@@ -25,6 +25,9 @@ def plot_met_profile(
     if samples is None:
         samples = np.array(["_" for _ in range(matrix.shape[0])])
         sample_order = ["_"]
+        
+    if sample_order is None:
+        sample_order = sorted(list(set(samples)))
 
     y_off = 0
     start = 0

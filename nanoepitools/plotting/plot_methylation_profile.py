@@ -34,6 +34,9 @@ def plot_met_profile(
         x = np.arange(start, end)
         part_matrix = matrix[:, x][(samples == s)]
 
+        if part_matrix.shape[0] <= 1:
+            continue
+
         active_reads = np.array((part_matrix != 0).sum(axis=1)).flatten() > 0
 
         part_matrix = part_matrix[active_reads]

@@ -128,7 +128,7 @@ class SparseMethylationMatrixContainer:
         read_names: np.ndarray,
         genomic_coord_start: np.ndarray,
         genomic_coord_end: np.ndarray,
-        read_samples: np.ndarray = None
+        read_samples: np.ndarray = None,
     ):
         assert met_matrix.shape[0] == len(read_names)
         assert met_matrix.shape[1] == len(genomic_coord_start)
@@ -185,7 +185,37 @@ class SparseMethylationMatrixContainer:
         sub_genomic_coord_end = self.genomic_coord_end[start:end]
 
         ret = SparseMethylationMatrixContainer(
-            sub_met_matrix, self.read_names, sub_genomic_coord, sub_genomic_coord_end, read_samples=self.read_samples
+            sub_met_matrix,
+            self.read_names,
+            sub_genomic_coord,
+            sub_genomic_coord_end,
+            read_samples=self.read_samples,
+        )
+        ret._compact()
+        return ret
+
+    def get_submatrix_from_read_mask(
+        self, allowed_reads: np.ndarray()
+    ) -> SparseMethylationMatrixContainer:
+        """Creates a submatrix containing only the given reads and their
+        methylation calls not genomic coordinates)
+
+        :param allowed_reads: boolean array with length of number of reads
+        :return: sub-matrix container
+        """
+        idx = allowed_reads
+        sub_met_matrix = self.met_matrix[idx, :]
+        sub_read_names = self.read_names[idx]
+        sub_read_samles = (
+            self.read_samples[idx] if self.read_samples is not None else None
+        )
+
+        ret = SparseMethylationMatrixContainer(
+            sub_met_matrix,
+            sub_read_names,
+            self.genomic_coord,
+            self.genomic_coord_end,
+            read_samples=sub_read_samles,
         )
         ret._compact()
         return ret
@@ -200,15 +230,7 @@ class SparseMethylationMatrixContainer:
         container
         """
         idx = [read in allowed_reads for read in self.read_names]
-        sub_met_matrix = self.met_matrix[idx, :]
-        sub_read_names = self.read_names[idx]
-        sub_read_samles = self.read_samples[idx] if self.read_samples is not None else None
-
-        ret = SparseMethylationMatrixContainer(
-            sub_met_matrix, sub_read_names, self.genomic_coord, self.genomic_coord_end, read_samples = sub_read_samles
-        )
-        ret._compact()
-        return ret
+        return self.get_submatrix_from_read_mask(idx)
 
     def get_genomic_region(self):
         return self.genomic_coord[0], self.genomic_coord[-1]
@@ -360,9 +382,46 @@ def compute_kmer_error(metcall: pd.DataFrame, error_method="llr"):
     return kmer_error["error"]
 
 
-def compute_read_methylation_betascore(
-    metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20
+def compute_read_statistics(
+    metcall: pd.DataFrame,
+    compute_bs=False,
+    compute_length=False,
+    llr_threshold=2.5,
+    min_calls=20,
 ) -> pd.Series:
+    """Computes for each read a number of statistics and return a
+    dataframe.
+
+    :param metcall: the dataframe as produced by nanopolish
+    :param compute_bs: whether to compute beta score
+    :param compute_bs: whether to compute read length
+    :param llr_threshold: exclude calls that are closer than this threshold to
+    zero
+    :param min_calls: exclude reads with fewer (included) calls
+    :return: A pandas series with the read name as index and beta scores
+    as values
+    """
+    to_merge = {}
+    if compute_bs:
+        metcall_g = metcall[["read_name", "log_lik_ratio"]].copy()
+        metcall_g["ismet"] = metcall_g["log_lik_ratio"] > llr_threshold
+        metcall_g["isunmet"] = metcall_g["log_lik_ratio"] < -llr_threshold
+        metcall_g = metcall_g.groupby("read_name").sum()
+        metcall_g["bs"] = metcall_g["ismet"] / (
+            metcall_g["ismet"] + metcall_g["isunmet"]
+        )
+        to_merge["bs"] = metcall_g.loc[
+            (metcall_g["ismet"] + metcall_g["isunmet"]) > min_calls
+        ]["bs"]
+    if compute_length:
+        metcall_g = metcall[["read_name", "start", "end"]].copy()
+        metcall_g["len"] = metcall_g["end"] - metcall_g["start"]
+        to_merge["length"] = metcall_g.groupby("read_name").sum()["len"]
+
+    return pd.DataFrame(to_merge)
+
+
+def compute_read_methylation_betascore(metcall: pd.DataFrame, **kwargs) -> pd.Series:
     """Computes for each read a beta score of methylation.
 
     :param metcall: the dataframe as produced by nanopolish
@@ -372,13 +431,7 @@ def compute_read_methylation_betascore(
     :return: A pandas series with the read name as index and beta scores
     as values
     """
-    metcall = metcall[["read_name", "log_lik_ratio"]].copy()
-    metcall["ismet"] = metcall["log_lik_ratio"] > llr_threshold
-    metcall["isunmet"] = metcall["log_lik_ratio"] < -llr_threshold
-    metcall = metcall.groupby("read_name").sum()
-    metcall["bs"] = metcall["ismet"] / (metcall["ismet"] + metcall["isunmet"])
-    metcall = metcall.loc[(metcall["ismet"] + metcall["isunmet"]) > min_calls]
-    return metcall["bs"]
+    return compute_read_statistics(metcall, **kwargs)["bs"]
 
 
 def aggregate_met_profile(

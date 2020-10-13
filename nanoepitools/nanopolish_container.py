@@ -5,7 +5,7 @@ import pandas as pd
 import scipy.sparse as sp
 import logging
 from pathlib import Path
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Dict
 
 from nanoepitools.nanopolish_calls import SparseMethylationMatrixContainer
 
@@ -26,7 +26,7 @@ def argsort_ranges(chrom_group):
 
 
 def create_sparse_matrix_from_samples(
-    sample_llrs: Dict[str:MethlyationValuesContainer],
+    sample_llrs: Dict[str, MethlyationValuesContainer],
 ) -> SparseMethylationMatrixContainer:
     samples = list(sample_llrs.keys())
     read_names = {

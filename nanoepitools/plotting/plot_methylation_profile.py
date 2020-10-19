@@ -18,6 +18,7 @@ def plot_met_profile(
     segment: np.array = None,
     highlights: List[Tuple] = None,
     highlight_color: str = None,
+    min_marker_width_relative: float = 0.002,
 ):
     def val_to_color(val):
         return 1 - np.exp(-np.abs(val) * 0.5)
@@ -25,9 +26,13 @@ def plot_met_profile(
     if samples is None:
         samples = np.array(["_" for _ in range(matrix.shape[0])])
         sample_order = ["_"]
-        
+
     if sample_order is None:
         sample_order = sorted(list(set(samples)))
+
+    if site_genomic_pos_end is not None:
+        x_range = np.max(site_genomic_pos_end) - np.min(site_genomic_pos)
+        min_marker_width = min_marker_width_relative * x_range
 
     y_off = 0
     start = 0
@@ -60,16 +65,24 @@ def plot_met_profile(
             if site_genomic_pos_end is not None:
                 x_end = site_genomic_pos_end[x]
             x = site_genomic_pos[x]  # Translate to actual pos on chrom
+            if site_genomic_pos_end is not None:
+                # Makes it so very short blocks are still visible
+                marker_adjust = (min_marker_width - x_end + x) // 2
+                marker_adjust[marker_adjust < 0] = 0
+                x = x - marker_adjust
+                x_end = x_end + marker_adjust
 
         if site_genomic_pos_end is None:
             plt.scatter(x, y, c=color, marker="|", s=15 * (0.25 + marker_height))
         else:
             # if the end location for each marker is given, we need to plot
             # rectangles
+
             patches = [
                 Rectangle((x[i], y[i]), x_end[i] - x[i] + 1, marker_height)
                 for i in range(len(x))
             ]
+
             patch_collection = PatchCollection(patches)
             patch_collection.set_color(color)
             patch_collection.set_edgecolor(None)

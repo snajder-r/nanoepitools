@@ -6,6 +6,7 @@ import pandas as pd
 
 import nanoepitools.math as nem
 import nanoepitools.nanopolish_calls as npc
+from nanoepitools.plotting.general_plotting import plot_2d_density
 from nanoepitools.util import pandas_index_intersect
 
 default_base_colors = {"C": "r", "T": "g", "G": "b", "A": "y"}
@@ -101,6 +102,22 @@ def plot_read_bs_dist(metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20):
     plt.hist(bs, bins=20)
 
 
+def plot_read_bs_vs_length_density(metcall: pd.DataFrame, llr_threshold=2.5, min_calls=20, cmap="coolwarm"):
+    """
+    Binarizes the methylation calls and then computes a beta-score
+    (methylation rate) per read. Then plots it as a density versus (an approximation of) read length
+    :param metcall: the dataframe as produced by nanopolish
+    :param llr_threshold: exclude calls that are closer than this threshold
+    to zero
+    :param min_calls: exclude reads with fewer (included) calls
+    """
+    read_stats = npc.compute_read_statistics(
+        metcall, llr_threshold=llr_threshold, min_calls=min_calls, compute_bs=True, compute_length=True
+    )
+    read_stats = read_stats.loc[~np.isnan(read_stats["bs"])]
+    plot_2d_density(np.log10(read_stats["length"]), read_stats["bs"], cmap=cmap)
+
+
 def plot_kmer_lenght_vs_uncertainty(
     metcall: pd.DataFrame, has_correct_col=False, uncertainty_method="linear"
 ):
@@ -192,7 +209,7 @@ def plot_kmer_function(
 
 
 def plot_kmer_uncertainty(
-    metcall: pd.DataFrame, base_colors=default_base_colors, uncertainty_method="linear"
+    metcall: pd.DataFrame, base_colors=None, uncertainty_method="linear"
 ):
     """
     Plot uncertainty of prediction per kmer
@@ -202,6 +219,8 @@ def plot_kmer_uncertainty(
     llr_to_uncertainty. Default: 'linear'
     :return: figure object
     """
+    if base_colors is None:
+        base_colors = default_base_colors
     kmer_uncertainty = npc.compute_kmer_uncertainty(
         metcall, uncertainty_method=uncertainty_method
     )
@@ -217,7 +236,7 @@ def plot_kmer_uncertainty(
 
 
 def plot_kmer_error_rate(
-    metcall: pd.DataFrame, base_colors=default_base_colors, error_method="llr"
+    metcall: pd.DataFrame, base_colors=None, error_method="llr"
 ):
     """
     Plot error rate of prediction per kmer
@@ -227,7 +246,8 @@ def plot_kmer_error_rate(
     :param error_method: How to quantify error. Default: 'llr'
     :return: figure object
     """
-
+    if base_colors is None:
+        base_colors = default_base_colors
     kmer_error = npc.compute_kmer_error(metcall, error_method=error_method)
     kmer_incidents = npc.count_kmer_incidents(metcall)
 
@@ -242,7 +262,7 @@ def plot_kmer_error_rate(
 
 def plot_kmer_error_vs_uncertainty(
     metcall: pd.DataFrame,
-    base_colors=default_base_colors,
+    base_colors=None,
     uncertainty_method="linear",
     error_method="llr",
 ):
@@ -256,7 +276,8 @@ def plot_kmer_error_vs_uncertainty(
     :param error_method: How to quantify error. Default: 'llr'
     :return: figure object
     """
-
+    if base_colors is None:
+        base_colors = default_base_colors
     kmer_error = npc.compute_kmer_error(metcall, error_method=error_method)
     kmer_uncertainty = npc.compute_kmer_uncertainty(
         metcall, uncertainty_method=uncertainty_method

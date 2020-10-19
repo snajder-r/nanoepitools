@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="nanoepitools", # Replace with your own username
+    name="nanoepitools",
     version="0.1.0",
     author="Rene Snajder",
     author_email="r.snajder@dkfz-heidelberg.de",
@@ -22,7 +22,7 @@ setuptools.setup(
         "numpy>=1.14.0",
         "h5py>=2.9.0",
         "pandas>=1.0.3",
-        "matplotlib>=3.3.0",
+        "matplotlib",
         ],
     python_requires='>=3.6',
 )

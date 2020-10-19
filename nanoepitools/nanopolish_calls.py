@@ -279,7 +279,7 @@ def compute_read_statistics(
 
     :param metcall: the dataframe as produced by nanopolish
     :param compute_bs: whether to compute beta score
-    :param compute_bs: whether to compute read length
+    :param compute_length: whether to compute read length
     :param llr_threshold: exclude calls that are closer than this threshold to
     zero
     :param min_calls: exclude reads with fewer (included) calls
@@ -299,9 +299,9 @@ def compute_read_statistics(
             (metcall_g["ismet"] + metcall_g["isunmet"]) > min_calls
         ]["bs"]
     if compute_length:
-        metcall_g = metcall[["read_name", "start", "end"]].copy()
-        metcall_g["len"] = metcall_g["end"] - metcall_g["start"]
-        to_merge["length"] = metcall_g.groupby("read_name").sum()["len"]
+        metcall_g = metcall[["read_name", "num_motifs"]].copy()
+        #metcall_g["len"] =  (metcall_g["end"] - metcall_g["start"] + 1)
+        to_merge["length"] = metcall_g.groupby("read_name").sum()["num_motifs"]
 
     return pd.DataFrame(to_merge)
 
@@ -316,7 +316,7 @@ def compute_read_methylation_betascore(metcall: pd.DataFrame, **kwargs) -> pd.Se
     :return: A pandas series with the read name as index and beta scores
     as values
     """
-    return compute_read_statistics(metcall, **kwargs)["bs"]
+    return compute_read_statistics(metcall, compute_bs=True, **kwargs)["bs"]
 
 
 def aggregate_met_profile(

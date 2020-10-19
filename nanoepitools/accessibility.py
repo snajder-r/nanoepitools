@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List
+from typing import List, Dict
 import logging
 
 class AccessibilityEntry:
@@ -58,7 +58,7 @@ def parse_line(line):
 
 class AccessibilityProfile:
     def __init__(self, entries: List[AccessibilityEntry]):
-        self.chrom_dict = {}
+        self.chrom_dict: Dict[str, List[List[AccessibilityEntry]]] = {}
         for entry in entries:
             if entry.chrom not in self.chrom_dict.keys():
                 self.chrom_dict[entry.chrom] = [[], []]  # fwd and rev strand

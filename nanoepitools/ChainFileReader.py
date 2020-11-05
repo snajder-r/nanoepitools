@@ -1,29 +1,35 @@
 from pathlib import Path
 
 CHAINFILE_COL_QUERY_CHROM = 2
+CHAINFILE_COL_QUERY_DIRECTION = 4
 CHAINFILE_COL_QUERY_START = 5
 CHAINFILE_COL_QUERY_END = 6
 
 CHAINFILE_COL_TARGET_CHROM = 7
+CHAINFILE_COL_TARGET_DIRECTION = 9
 CHAINFILE_COL_TARGET_START = 10
 CHAINFILE_COL_TARGET_END = 11
 
 
 class Chain:
-    def __init__(self, ref_contig, ref_start, ref_end, query_contig, query_start, query_end):
+    def __init__(
+        self, ref_contig, ref_start, ref_end, ref_direction, query_contig, query_start, query_end, query_direction
+    ):
         self.ref_contig = ref_contig
         self.ref_start = ref_start
         self.ref_end = ref_end
+        self.ref_direction = ref_direction
         self.query_contig = query_contig
         self.query_start = query_start
         self.query_end = query_end
+        self.query_direction = query_direction
         self.lines = []
 
     def __iter__(self):
         return iter(self.lines)
-    
+
     def __str__(self):
-        return f"Ref: {self.ref_contig}:{self.ref_start}-{self.ref_end} Query: {self.query_contig}:{self.query_start}-{self.query_end}"
+        return f"Ref: {self.ref_contig}:{self.ref_start}-{self.ref_end} ({self.ref_direction}) Query: {self.query_contig}:{self.query_start}-{self.query_end} ({self.query_direction})"
 
 
 class ChainSet:
@@ -60,27 +66,31 @@ class ChainSet:
                 while chain.ref_start > pos:
                     result.append(None)
                     pos = next(pos_list)
-            
+
                 if chain.ref_start <= pos < chain.ref_end:
                     query_offset = 0
                     ref_offset = 0
                     for link in chain:
                         while True:  # Until no position matched here
-                            if chain.ref_start + ref_offset > pos:
+                            if pos < chain.ref_start + ref_offset:
+                                # Next match-group starts after requested position
                                 result.append(None)
                                 pos = next(pos_list)
                                 continue
                             ref_end_match = chain.ref_start + ref_offset + link[0]
                             diff_start = ref_end_match - pos
-                            if diff_start >= 0:
-                                result.append((chain.query_contig, chain.query_start + query_offset + link[0] - diff_start))
+                            # test if pos < ref_end_match
+                            if diff_start > 0:
+                                # Requested position is in this match-group
+                                result.append(
+                                    (chain.query_contig, chain.query_start + query_offset + link[0] - diff_start)
+                                )
                                 pos = next(pos_list)
                                 continue
-                        
                             if link[1] is not None:
                                 # If this isnt the last link, prepare to look at next link
-                                ref_offset += link[1] + link[0]
-                                query_offset += link[2] + link[0]
+                                ref_offset += link[2] + link[0]
+                                query_offset += link[1] + link[0]
                             break
         except StopIteration:
             # All positions processed
@@ -88,14 +98,27 @@ class ChainSet:
 
 
 class ChainReader:
-    def __init__(self, parent, ref_contig, ref_start, ref_end, query_contig, query_start, query_end):
+    def __init__(
+        self,
+        parent,
+        ref_contig,
+        ref_start,
+        ref_end,
+        ref_direction,
+        query_contig,
+        query_start,
+        query_end,
+        query_direction,
+    ):
         self.parent = parent
         self.ref_contig = ref_contig
         self.ref_start = ref_start
         self.ref_end = ref_end
+        self.ref_direction = ref_direction
         self.query_contig = query_contig
         self.query_start = query_start
         self.query_end = query_end
+        self.query_direction = query_direction
         self.done = False
         self.lines = None
 
@@ -157,9 +180,11 @@ class ChainFileReader:
             line[CHAINFILE_COL_TARGET_CHROM],
             int(line[CHAINFILE_COL_TARGET_START]),
             int(line[CHAINFILE_COL_TARGET_END]),
+            line[CHAINFILE_COL_TARGET_DIRECTION],
             line[CHAINFILE_COL_QUERY_CHROM],
             int(line[CHAINFILE_COL_QUERY_START]),
             int(line[CHAINFILE_COL_QUERY_END]),
+            line[CHAINFILE_COL_QUERY_DIRECTION],
         )
         self.current_chain_reader = chainreader
         return chainreader
@@ -171,9 +196,11 @@ class ChainFileReader:
                 chain_reader.ref_contig,
                 chain_reader.ref_start,
                 chain_reader.ref_end,
+                chain_reader.ref_direction,
                 chain_reader.query_contig,
                 chain_reader.query_start,
                 chain_reader.query_end,
+                chain_reader.query_direction,
             )
             chain.lines = [line for line in chain_reader]
             chain_set.chains.append(chain)

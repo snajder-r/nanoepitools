@@ -32,6 +32,44 @@ class Chain:
         return f"Ref: {self.ref_contig}:{self.ref_start}-{self.ref_end} ({self.ref_direction}) Query: {self.query_contig}:{self.query_start}-{self.query_end} ({self.query_direction})"
 
 
+    def translate_sorted_target_to_query(self, pos_list):
+        query_offset = 0
+        ref_offset = 0
+        result = []
+        if self.ref_direction == "-":
+            # Reading in reverse
+            pos_list = [self.ref_end + self.ref_start - p - 1 for p in pos_list][::-1]
+        pos_list = iter(pos_list)
+        pos = next(pos_list)
+        
+        try:
+            for link in self:
+                while True:  # Until no position matched here
+                    if pos < self.ref_start + ref_offset:
+                        # Next match-group starts after requested position
+                        result.append(None)
+                        pos = next(pos_list)
+                        
+                        continue
+                    ref_end_match = self.ref_start + ref_offset + link[0]
+                    diff_start = ref_end_match - pos
+                    # test if pos < ref_end_match
+                    if diff_start > 0:
+                        # Requested position is in this match-group
+                        result.append((self.query_contig, self.query_start + query_offset + link[0] - diff_start))
+                        pos = next(pos_list)
+                        continue
+                    if link[1] is not None:
+                        # If this isnt the last link, prepare to look at next link
+                        ref_offset += link[2] + link[0]
+                        query_offset += link[1] + link[0]
+                    break
+        except StopIteration:
+            if self.ref_direction == "-":
+                return result[::-1]
+            else:
+                return result
+
 class ChainSet:
     def __init__(self):
         self.chains = []
@@ -58,43 +96,41 @@ class ChainSet:
                         query_offset += link[2] + link[0]
 
     def translate_sorted_target_to_query(self, pos_list):
-        pos_list = iter(pos_list)
-        result = []
-        try:
-            pos = next(pos_list)
-            for chain in self:
-                while chain.ref_start > pos:
-                    result.append(None)
-                    pos = next(pos_list)
-
-                if chain.ref_start <= pos < chain.ref_end:
-                    query_offset = 0
-                    ref_offset = 0
-                    for link in chain:
-                        while True:  # Until no position matched here
-                            if pos < chain.ref_start + ref_offset:
-                                # Next match-group starts after requested position
-                                result.append(None)
-                                pos = next(pos_list)
-                                continue
-                            ref_end_match = chain.ref_start + ref_offset + link[0]
-                            diff_start = ref_end_match - pos
-                            # test if pos < ref_end_match
-                            if diff_start > 0:
-                                # Requested position is in this match-group
-                                result.append(
-                                    (chain.query_contig, chain.query_start + query_offset + link[0] - diff_start)
-                                )
-                                pos = next(pos_list)
-                                continue
-                            if link[1] is not None:
-                                # If this isnt the last link, prepare to look at next link
-                                ref_offset += link[2] + link[0]
-                                query_offset += link[1] + link[0]
-                            break
-        except StopIteration:
-            # All positions processed
-            return result
+        pos_enum = enumerate(pos_list)
+        i, pos = next(pos_enum)
+    
+        chain_iter = iter(self.chains)
+        chain = next(chain_iter)
+    
+        combined_mapping = []
+    
+        while True:
+            if chain.ref_start <= pos < chain.ref_end:
+                # Find remaining positions:
+                i_start = i
+                while True:
+                    if i == len(pos_list) - 1:
+                        # Last position
+                        i = i + 1
+                        break
+                    i, pos = next(pos_enum)
+                    if pos > chain.ref_end:
+                        break
+                mapping = chain.translate_sorted_target_to_query(pos_list[i_start: i])
+                combined_mapping = combined_mapping + mapping
+        
+            if i == len(pos_list):
+                # Last position
+                break
+        
+            if pos < chain.ref_start:
+                combined_mapping.append(None)
+                i, pos = next(pos_enum)
+                continue
+            if chain.ref_end <= pos:
+                chain = next(chain_iter)
+                continue
+        return combined_mapping
 
 
 class ChainReader:

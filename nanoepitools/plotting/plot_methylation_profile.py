@@ -4,63 +4,53 @@ from typing import List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import PatchCollection
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, Patch
 
 
-def plot_met_profile(
-    matrix: np.array,
-    samples: np.ndarray = None,
-    sample_order: List[str] = None,
-    sample_colors: Dict = None,
-    site_genomic_pos=None,
-    site_genomic_pos_end=None,
-    marker_height=0.75,
-    segment: np.array = None,
-    highlights: List[Tuple] = None,
-    highlight_color: str = None,
-    min_marker_width_relative: float = 0.002,
-):
+def plot_met_profile(matrix: np.array, samples: np.ndarray = None, sample_order: List[str] = None,
+        sample_colors: Dict = None, site_genomic_pos=None, site_genomic_pos_end=None, marker_height=0.75,
+        segment: np.array = None, highlights: List[Tuple] = None, highlight_color: str = None,
+        min_marker_width_relative: float = 0.002, ):
     def val_to_color(val):
         return 1 - np.exp(-np.abs(val) * 0.5)
-
+    
     if samples is None:
         samples = np.array(["_" for _ in range(matrix.shape[0])])
         sample_order = ["_"]
-
+    
     if sample_order is None:
         sample_order = sorted(list(set(samples)))
-
+    
     if site_genomic_pos_end is not None:
         x_range = np.max(site_genomic_pos_end) - np.min(site_genomic_pos)
         min_marker_width = min_marker_width_relative * x_range
-
+    
     y_off = 0
     start = 0
+    x_max = 0
     end = matrix.shape[1]
-
+    sample_marker_range = {}
+    
     for s in sample_order:
         x = np.arange(start, end)
         part_matrix = matrix[:, x][(samples == s)]
-
+        
         if part_matrix.shape[0] <= 1:
             continue
-
+        
         active_reads = np.array((part_matrix != 0).sum(axis=1)).flatten() > 0
-
+        
         part_matrix = part_matrix[active_reads]
         hasval = np.array(part_matrix != 0).flatten()
         y = np.arange(part_matrix.shape[0]) + y_off
-
+        
         x, y = np.meshgrid(x, y)
         x = x.flatten()[hasval]
         y = y.flatten()[hasval]
         matrix_data = np.array(part_matrix).flatten()[hasval]
-
-        color = [
-            [0, 1, 0, val_to_color(-v)] if v < 0 else [1, 0, 0, val_to_color(v)]
-            for v in matrix_data
-        ]
-
+        
+        color = [[0, 1, 0, val_to_color(-v)] if v < 0 else [1, 0, 0, val_to_color(v)] for v in matrix_data]
+        
         if site_genomic_pos is not None:
             if site_genomic_pos_end is not None:
                 x_end = site_genomic_pos_end[x]
@@ -71,45 +61,46 @@ def plot_met_profile(
                 marker_adjust[marker_adjust < 0] = 0
                 x = x - marker_adjust
                 x_end = x_end + marker_adjust
-
+        
         if site_genomic_pos_end is None:
             plt.scatter(x, y, c=color, marker="|", s=15 * (0.25 + marker_height))
         else:
             # if the end location for each marker is given, we need to plot
             # rectangles
-
-            patches = [
-                Rectangle((x[i], y[i]), x_end[i] - x[i] + 1, marker_height)
-                for i in range(len(x))
-            ]
-
+            
+            patches = [Rectangle((x[i], y[i]), x_end[i] - x[i] + 1, marker_height) for i in range(len(x))]
+            
             patch_collection = PatchCollection(patches)
             patch_collection.set_color(color)
             patch_collection.set_edgecolor(None)
             plt.gca().add_collection(patch_collection)
             plt.gca().autoscale_view()
-
+        
         if sample_colors is not None:
-            x = np.ones(part_matrix.shape[0]) * (x.max() + 20)
-            y = np.arange(part_matrix.shape[0]) + y_off
-            plt.scatter(x, y, c=sample_colors[s])
-
+            sample_marker_range[s] = (y_off, part_matrix.shape[0] + y_off)
+            x_max = max(x.max(), x_max)
+        
         y_off += part_matrix.shape[0]
-
+    
+    if sample_colors is not None:
+        xlim = plt.xlim()
+        marker_width = (xlim[1] - xlim[0]) * 0.005
+        for s, marker in sample_marker_range.items():
+            patch = Rectangle((xlim[1] - marker_width * 2, marker[0]), marker_width, marker[1] - marker[0],
+                              color=sample_colors[s])
+            plt.gca().add_patch(patch)
+        
+        legend_elements = [Patch(facecolor=sample_colors[s], edgecolor=sample_colors[s], label=s) for s in sample_order]
+        plt.legend(handles=legend_elements)
+    
     if segment is not None:
         plot_segment_lines(segment, site_genomic_pos=site_genomic_pos)
-
+    
     if highlights is not None:
-        plot_vertical_highlights(
-            highlights,
-            highlight_color=highlight_color,
-            site_genomic_pos=site_genomic_pos,
-        )
+        plot_vertical_highlights(highlights, highlight_color=highlight_color, site_genomic_pos=site_genomic_pos, )
 
 
-def plot_vertical_highlights(
-    highlights: List[Tuple], highlight_color="b", site_genomic_pos=None
-):
+def plot_vertical_highlights(highlights: List[Tuple], highlight_color="b", site_genomic_pos=None):
     if highlights is not None:
         for highlight_range in highlights:
             if site_genomic_pos is not None:
@@ -128,5 +119,7 @@ def plot_segment_lines(segment: np.array, site_genomic_pos=None):
         if segment[i] == segment[i - 1]:
             continue
         if site_genomic_pos is not None:
-            i = site_genomic_pos[i]
-        plt.plot((i - 2 + 0.5, i - 2 + 0.5), (0, ymax - 1), c="k")
+            x = (site_genomic_pos[i - 1] + site_genomic_pos[i])/2
+        else:
+            x = i - 1 + 0.5
+        plt.plot((x, x), (0, ymax - 1), c="k")

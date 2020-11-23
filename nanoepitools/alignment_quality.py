@@ -30,8 +30,7 @@ class AlignmentTypeTotals:
         self.total_only_supp = total_only_supp
 
 
-def classify_alignment(mapping, read):
-    alignments = mapping[read]
+def classify_alignment(alignments):
     has_fwd_strand = 0
     has_rev_strand = 0
     has_supplementary = 0
@@ -62,7 +61,7 @@ def classify_alignment(mapping, read):
 def categorize_reads(mapping):
     ret = dict()
     for read in mapping.keys():
-        alignment_type = classify_alignment(mapping, read)
+        alignment_type = classify_alignment(mapping[read])
         if alignment_type not in ret.keys():
             ret[alignment_type] = []
         ret[alignment_type].append(read)
@@ -76,7 +75,7 @@ def count_types_of_alignments(mapping):
     total_inverse_repeats = 0
     total_only_supp = 0
     for read in mapping.keys():
-        alignment_type = classify_alignment(mapping, read)
+        alignment_type = classify_alignment(mapping[read])
         if alignment_type == "only_supp":
             total_only_supp += 1
         elif alignment_type == "nonchimeric_multi":

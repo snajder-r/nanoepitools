@@ -38,11 +38,11 @@ def intersect_locations_with_ranges(locations, ranges, nonevalue=-1):
         data=nonevalue, index=locations.index, dtype=ranges.index.dtype
     )
 
-    en_ranges = enumerate(ranges.itertuples())
-    en_loc = enumerate(locations.itertuples())
+    en_ranges = ranges.itertuples()
+    en_loc = locations.itertuples()
 
-    _, region = next(en_ranges)
-    _, loc = next(en_loc)
+    region = next(en_ranges)
+    loc = next(en_loc)
 
     try:
         """
@@ -56,11 +56,11 @@ def intersect_locations_with_ranges(locations, ranges, nonevalue=-1):
         while True:
             """ If location is behind region, spool location """
             while loc[1] < region[1]:
-                _, loc = next(en_loc)
+                loc = next(en_loc)
 
             """ If location is past region, spool region """
             while loc[1] > region[2]:
-                _, region = next(en_ranges)
+                region = next(en_ranges)
 
             """ Check all the constraints """
             if region[1] <= loc[1] <= region[2]:
@@ -70,9 +70,24 @@ def intersect_locations_with_ranges(locations, ranges, nonevalue=-1):
                 pass
 
             """ Get next cpg location """
-            _, loc = next(en_loc)
+            loc = next(en_loc)
 
     except StopIteration:
         pass
 
     return region_membership
+
+
+def intersect_locations_with_ranges_by_chromosome(locations, ranges, locations_chrom_key="chrom",
+                                                  ranges_chrom_key="chrom", nonevalue=-1):
+    chromosome_intersection = set(locations[locations_chrom_key]).intersection(set(ranges[ranges_chrom_key]))
+    locations = locations.groupby(locations_chrom_key)
+    ranges = ranges.groupby(ranges_chrom_key)
+    
+    region_membership = []
+    for chrom in chromosome_intersection:
+        chr_locs = locations.get_group(chrom).drop(locations_chrom_key, axis=1)
+        chr_rngs = ranges.get_group(chrom).drop(ranges_chrom_key, axis=1)
+        region_membership.append(intersect_locations_with_ranges(chr_locs, chr_rngs, nonevalue=nonevalue))
+    
+    return pd.concat(region_membership)

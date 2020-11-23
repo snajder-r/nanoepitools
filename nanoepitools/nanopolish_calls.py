@@ -6,7 +6,7 @@ import re
 import scipy.sparse as sp
 from pathlib import Path
 from typing import List, Union, Dict, Iterable, Tuple, Optional
-from meth5.nanopolish_container import  SparseMethylationMatrixContainer
+from meth5.sparse_matrix import SparseMethylationMatrixContainer
 
 import nanoepitools.math as nem
 

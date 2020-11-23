@@ -18,9 +18,9 @@ def set_figure_defaults(fig):
     fig.autolayout = False
 
 
-def density_plot(x, y, *argc, **kwargs):
+def plot_1d_density(x, y, *argc, **kwargs):
     density = scipy.stats.gaussian_kde(y)
-    plt.plot(density(x), *argc, **kwargs)
+    plt.plot(x, density(x), *argc, **kwargs)
 
 
 def plot_2d_density(x, y, nbins=50, cmap=plt.cm.BuGn_r):

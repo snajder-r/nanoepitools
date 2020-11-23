@@ -31,17 +31,17 @@ class Chain:
     def __str__(self):
         return f"Ref: {self.ref_contig}:{self.ref_start}-{self.ref_end} ({self.ref_direction}) Query: {self.query_contig}:{self.query_start}-{self.query_end} ({self.query_direction})"
 
-
     def translate_sorted_target_to_query(self, pos_list):
         query_offset = 0
         ref_offset = 0
         result = []
         if self.ref_direction == "-":
+            print("rev")
             # Reading in reverse
-            pos_list = [self.ref_end + self.ref_start - p - 1 for p in pos_list][::-1]
+            pos_list = [self.ref_end + self.ref_start - p for p in pos_list][::-1]
         pos_list = iter(pos_list)
         pos = next(pos_list)
-        
+    
         try:
             for link in self:
                 while True:  # Until no position matched here
@@ -49,7 +49,6 @@ class Chain:
                         # Next match-group starts after requested position
                         result.append(None)
                         pos = next(pos_list)
-                        
                         continue
                     ref_end_match = self.ref_start + ref_offset + link[0]
                     diff_start = ref_end_match - pos
@@ -65,10 +64,11 @@ class Chain:
                         query_offset += link[1] + link[0]
                     break
         except StopIteration:
-            if self.ref_direction == "-":
-                return result[::-1]
-            else:
-                return result
+            pass
+        if self.ref_direction == "-":
+            return result[::-1]
+        else:
+            return result
 
 class ChainSet:
     def __init__(self):
@@ -131,6 +131,7 @@ class ChainSet:
                 chain = next(chain_iter)
                 continue
         return combined_mapping
+
 
 
 class ChainReader:

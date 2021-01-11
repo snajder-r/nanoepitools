@@ -1,10 +1,12 @@
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import scipy.stats
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from bokeh.plotting import figure, output_file
+
 
 
 def set_if_not_in_dict(d, k, v):
@@ -30,6 +32,47 @@ def plot_2d_density(x, y, nbins=50, cmap=plt.cm.BuGn_r):
 
     plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading="gouraud", cmap=cmap)
     plt.contour(xi, yi, zi.reshape(xi.shape))
+
+
+def plot_multiple_histograms(
+    data: List[np.ndarray],
+    bins=200,
+    bound=np.inf,
+    ubound=np.inf,
+    lbound=-np.inf,
+    alpha=0.5,
+    colors=None,
+    labels=None,
+    normalize_histograms=False,
+    title="",
+    xlabel="",
+    ylabel="Frequency"
+):
+    if not np.isinf(bound):
+        ubound = np.abs(bound)
+        lbound = -np.abs(bound)
+
+    if not np.isinf(ubound) and not np.isinf(lbound):
+        bins = np.arange(-bound, bound + 1, (2 * (bound + 1)) / bins)
+
+    for i, val in enumerate(data):
+        val = np.clip(val, lbound, ubound)
+        weights = np.ones(len(val))
+        if normalize_histograms:
+            weights = weights / len(val)
+        plt.hist(
+            val,
+            weights=weights,
+            bins=bins,
+            alpha=alpha,
+            color=(colors[i] if colors is not None else None),
+            label=(labels[i] if labels is not None else None),
+        )
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.tight_layout()
 
 
 class PDFPagesWrapper:

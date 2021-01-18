@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.stats import rankdata
 
+from typing import Tuple
+
 
 def llr_to_p(llr, prior=0.5):
     """
@@ -36,3 +38,18 @@ def fdr_from_pvals(p_vals: np.ndarray) -> np.ndarray:
     fdr[fdr > 1] = 1
 
     return fdr
+
+
+def bs_from_llrs(llrs: np.ndarray, thres: float = 1, min_reads: int = 1) -> float:
+    """
+    Computes methylation beta score from a list of log-likelihood ratios
+    :param llrs: Log-likelihood ratio array
+    :param thres: threshold for absolute llr - excluding all llrs with an absolute llr lower than this threshold
+                  (default: 1.0)
+    :param min_reads: return np.nan if length of llrs after threshold filtering is less than min_reads (default: 1)
+    :return: methylation beta score
+    """
+    llrs_used = llrs[np.abs(llrs) > thres]
+    if len(llrs_used) < min_reads:
+        return np.nan
+    return (llrs_used > 0).sum() / len(llrs_used)

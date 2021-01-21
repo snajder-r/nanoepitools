@@ -37,18 +37,13 @@ def load_nanopore_metcalls_from_tsv(
             if all_sample_met[sample][mettype] is None:
                 all_sample_met[sample][mettype] = met_part
             else:
-                all_sample_met[sample][mettype] = all_sample_met[sample][
-                    mettype
-                ].append(met_part)
+                all_sample_met[sample][mettype] = all_sample_met[sample][mettype].append(met_part)
 
     return all_sample_met
 
 
 def load_merged_nanopore_metcalls(
-    input_folder: Union[str, Path],
-    samples: List[str],
-    chroms: List[str],
-    mettypes: List[str] = ["cpg", "gpc", "dam"],
+    input_folder: Union[str, Path], samples: List[str], chroms: List[str], mettypes: List[str] = ["cpg", "gpc", "dam"],
 ) -> Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
     """Loads pickled nanopolish methylation calls as pandas dataframes
     and organizes them by sample, chromosome, and methylation type.
@@ -78,9 +73,7 @@ def load_merged_nanopore_metcalls(
                 filename = base_filename.format(chrom=chrom, mettype=mettype)
                 filepath = sample_dir.joinpath(filename)
 
-                all_sample_met[sample][chrom][mettype] = pd.read_pickle(
-                    filepath, compression="gzip"
-                )
+                all_sample_met[sample][chrom][mettype] = pd.read_pickle(filepath, compression="gzip")
 
     return all_sample_met
 
@@ -116,16 +109,12 @@ class MultiIntervalFilter(RegionFilter):
         self.ranges = ranges
 
     def filter(self, allmet):
-        passed = allmet["start"].map(
-            lambda x: any([r[0] <= x < r[1] for r in self.ranges])
-        )
+        passed = allmet["start"].map(lambda x: any([r[0] <= x < r[1] for r in self.ranges]))
         return allmet.loc[passed]
 
 
 def filter_nanopolish(
-    allmet: pd.DataFrame,
-    region_filter: RegionFilter = RegionFilter(),
-    filter_bad_reads: bool = False,
+    allmet: pd.DataFrame, region_filter: RegionFilter = RegionFilter(), filter_bad_reads: bool = False,
 ):
     # Apply filter
     allmet = region_filter.filter(allmet)
@@ -165,9 +154,7 @@ def metcall_dataframe_to_llr_matrix(allmet: pd.DataFrame):
 
     genomic_coord_start = np.sort(list(set(allmet["start"])))
     genomic_coord_end = np.sort(list(set(allmet["end"])))
-    coord_to_index_dict = {
-        genomic_coord_start[i]: i for i in range(len(genomic_coord_start))
-    }
+    coord_to_index_dict = {genomic_coord_start[i]: i for i in range(len(genomic_coord_start))}
     # Building sparse read vs site methylation matrix
     # As a compromise between memory usage and processing speed,
     # we build dense blocks (fast, but takes memory),
@@ -189,9 +176,7 @@ def metcall_dataframe_to_llr_matrix(allmet: pd.DataFrame):
             read_idx = read_dict[cur_rn]
         met_matrix[read_idx, coord_to_index_dict[e[3]]] = e[6]
     met_matrix = sp.csc_matrix(met_matrix)
-    return SparseMethylationMatrixContainer(
-        met_matrix, read_names, genomic_coord_start, genomic_coord_end
-    )
+    return SparseMethylationMatrixContainer(met_matrix, read_names, genomic_coord_start, genomic_coord_end)
 
 
 def get_only_single_cpg_calls(metcall: pd.DataFrame):
@@ -228,9 +213,7 @@ def compute_kmer_uncertainty(metcall: pd.DataFrame, uncertainty_method="linear")
     """
     metcall_onecpg = get_only_single_cpg_calls(metcall).copy()
     add_sixmer_column(metcall_onecpg)
-    metcall_onecpg["uncertainty"] = nem.llr_to_uncertainty(
-        metcall_onecpg["log_lik_ratio"], method=uncertainty_method
-    )
+    metcall_onecpg["uncertainty"] = nem.llr_to_uncertainty(metcall_onecpg["log_lik_ratio"], method=uncertainty_method)
 
     metcall_onecpg = metcall_onecpg[["sixmer", "uncertainty"]]
     kmer_uncertainty = metcall_onecpg.groupby("sixmer").mean()
@@ -269,11 +252,7 @@ def compute_kmer_error(metcall: pd.DataFrame, error_method="llr"):
 
 
 def compute_read_statistics(
-    metcall: pd.DataFrame,
-    compute_bs=False,
-    compute_length=False,
-    llr_threshold=2.5,
-    min_calls=20,
+    metcall: pd.DataFrame, compute_bs=False, compute_length=False, llr_threshold=2.5, min_calls=20,
 ) -> pd.Series:
     """Computes for each read a number of statistics and return a
     dataframe.
@@ -293,15 +272,11 @@ def compute_read_statistics(
         metcall_g["ismet"] = metcall_g["log_lik_ratio"] > llr_threshold
         metcall_g["isunmet"] = metcall_g["log_lik_ratio"] < -llr_threshold
         metcall_g = metcall_g.groupby("read_name").sum()
-        metcall_g["bs"] = metcall_g["ismet"] / (
-            metcall_g["ismet"] + metcall_g["isunmet"]
-        )
-        to_merge["bs"] = metcall_g.loc[
-            (metcall_g["ismet"] + metcall_g["isunmet"]) > min_calls
-        ]["bs"]
+        metcall_g["bs"] = metcall_g["ismet"] / (metcall_g["ismet"] + metcall_g["isunmet"])
+        to_merge["bs"] = metcall_g.loc[(metcall_g["ismet"] + metcall_g["isunmet"]) > min_calls]["bs"]
     if compute_length:
         metcall_g = metcall[["read_name", "num_motifs"]].copy()
-        #metcall_g["len"] =  (metcall_g["end"] - metcall_g["start"] + 1)
+        # metcall_g["len"] =  (metcall_g["end"] - metcall_g["start"] + 1)
         to_merge["length"] = metcall_g.groupby("read_name").sum()["num_motifs"]
 
     return pd.DataFrame(to_merge)
@@ -321,9 +296,7 @@ def compute_read_methylation_betascore(metcall: pd.DataFrame, **kwargs) -> pd.Se
 
 
 def aggregate_met_profile(
-    met_pairs: Iterable[Tuple[int, float, Optional[int]]],
-    pos_dict: Dict[int, int],
-    window_size: int,
+    met_pairs: Iterable[Tuple[int, float, Optional[int]]], pos_dict: Dict[int, int], window_size: int,
 ):
     """Computes a methylation profile for a fixed size window in one
     chromosome, given a dictionary that maps genomic coordinates on a
@@ -363,7 +336,7 @@ def aggregate_met_profile(
     return met_totals, met_counts
 
 
-def compute_average_metrate_profile_all_chrom(
+def aggregate_met_profile_all_chroms(
     met_pairs_per_chrom: Dict[str, Iterable[Tuple[int, float, Optional[int]]]],
     pos_dict_per_chrom: Dict[str, Dict[int, int]],
     window_size: int,
@@ -389,9 +362,26 @@ def compute_average_metrate_profile_all_chrom(
         # (to the TSS) position
         pos_dict = pos_dict_per_chrom[chrom]
         met_pairs = met_pairs_per_chrom[chrom]
-        met_totals_chrom, met_count_chrom = aggregate_met_profile(
-            met_pairs, pos_dict, window_size
-        )
+        met_totals_chrom, met_count_chrom = aggregate_met_profile(met_pairs, pos_dict, window_size)
         met_totals += met_totals_chrom
         met_count += met_count_chrom
+    return met_totals, met_count
+
+
+def compute_average_metrate_profile_all_chrom(*args, **kwargs) -> np.ndarray:
+    """Computes a methylation profile for a fixed size window over
+    multiple chromosomes, given a dictionary per chromosome that maps
+    genomic coordinates to a position in the window.
+
+    :param met_pairs_per_chrom: Key is chromosome name, value is iterable of tuples,
+    where each tuple consists of the genomic coordinate on that chromosome and the
+    methylation rate. A third optional element can be provided for grouped methylation
+    calls. It should contain a list with offsets from the start position.
+    :param pos_dict_per_chrom: Key is chromosome, value is a dictionary that
+    maps the genomic coordinate on that chromosome to a position in the
+    :param window_size: The size of the window in basepairs window
+    :return: a numpy array of shape (window_size,) containing the average methylation
+    rate for each site in the window
+    """
+    met_totals, met_count = aggregate_met_profile_all_chroms(*args, **kwargs)
     return met_totals / met_count

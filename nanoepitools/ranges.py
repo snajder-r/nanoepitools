@@ -91,3 +91,55 @@ def intersect_locations_with_ranges_by_chromosome(locations, ranges, locations_c
         region_membership.append(intersect_locations_with_ranges(chr_locs, chr_rngs, nonevalue=nonevalue))
     
     return pd.concat(region_membership)
+
+
+def intersect_ranges(ranges_a, ranges_b, nonevalue=-1):
+    region_membership = pd.Series(data=nonevalue, index=ranges_a.index, dtype=ranges_b.index.dtype)
+    
+    en_a = ranges_a.itertuples()
+    en_b = ranges_b.itertuples()
+    
+    a = next(en_a)
+    b = next(en_b)
+    
+    try:
+        """
+        When accessing the tuples, remember:
+            x[0]: index
+            x[1]: start
+            x[2]: end
+        """
+        while True:
+            """ If a is behind b, spool a """
+            
+            while a[2] < b[1] or b[2] < a[1]:
+                if a[2] < b[1]:
+                    a = next(en_a)
+                if b[2] < a[1]:
+                    b = next(en_b)
+            
+            region_membership[a[0]] = b[0]
+            
+            if a[1] < b[1]:
+                a = next(en_a)
+            else:
+                b = next(en_b)
+    
+    except StopIteration:
+        pass
+    
+    return region_membership
+
+
+def intersect_ranges_by_chromosome(ranges_a, ranges_b, a_chrom_key="chrom", b_chrom_key="chrom", nonevalue=-1):
+    chromosome_intersection = set(ranges_a[a_chrom_key]).intersection(set(ranges_b[b_chrom_key]))
+    ranges_a = ranges_a.groupby(a_chrom_key)
+    ranges_b = ranges_b.groupby(b_chrom_key)
+    
+    region_membership = []
+    for chrom in chromosome_intersection:
+        chr_a = ranges_a.get_group(chrom).drop(a_chrom_key, axis=1)
+        chr_b = ranges_b.get_group(chrom).drop(b_chrom_key, axis=1)
+        region_membership.append(intersect_ranges(chr_a, chr_b, nonevalue=nonevalue))
+    
+    return pd.concat(region_membership)

@@ -1,5 +1,5 @@
 from typing import Dict
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +9,7 @@ from matplotlib.patches import Rectangle, Patch
 
 def plot_met_profile(matrix: np.array, samples: np.ndarray = None, sample_order: List[str] = None,
         sample_colors: Dict = None, site_genomic_pos=None, site_genomic_pos_end=None, marker_height=0.75,
-        segment: np.array = None, highlights: List[Tuple] = None, highlight_color: str = None,
+        segment: np.array = None, highlights: List[Tuple] = None, highlight_color: Union[str, List[str]] = None,
         min_marker_width_relative: float = 0.002, ):
     def val_to_color(val):
         return 1 - np.exp(-np.abs(val) * 0.5)
@@ -102,13 +102,19 @@ def plot_met_profile(matrix: np.array, samples: np.ndarray = None, sample_order:
 
 def plot_vertical_highlights(highlights: List[Tuple], highlight_color="b", site_genomic_pos=None):
     if highlights is not None:
-        for highlight_range in highlights:
+        for i, highlight_range in enumerate(highlights):
             if site_genomic_pos is not None:
                 highlight_range = [site_genomic_pos[p] for p in highlight_range]
+                
+            if isinstance(highlight_color,list):
+                color = highlight_color[i]
+            else:
+                color = highlight_color
+                
             plt.axvspan(
                 highlight_range[0],
                 highlight_range[1],
-                color=highlight_color,
+                color=color,
                 alpha=0.25,
             )
 

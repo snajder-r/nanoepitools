@@ -3,165 +3,140 @@ from typing import Union, IO
 
 from pathlib import Path
 import pandas as pd
+import itertools
 
 
-class GFFAnnotations:
-    def __init__(self, gff_file: Union[Path, str]):
-        self.gff_file = gff_file
-        self.gene_regex = re.compile("ID=gene:.*;Name=(.*);biotype.*")
-        self.transcript_regex = re.compile(".*Parent=gene:[^;]*;Name=([^;]*);.*")
-
-    def read_dataframe(self, **kwargs):
-        return pd.read_csv(
-            self.gff_file,
-            sep="\t",
-            comment="#",
-            usecols=[0, 2, 3, 4, 6, 8],
-            header=None,
-            names=["chr", "type", "start", "end", "direction", "info"],
-            dtype={"chr": str},
-            **kwargs
-        )
-
-    def read_genes(self, protein_coding=True):
-        annotation_df = self.read_dataframe(chunksize=1000)
-        gene_df = []
-        for chunk in annotation_df:
-            chunk = chunk.loc[chunk["type"] == "gene"]
-            if protein_coding:
-                chunk = chunk.loc[chunk["info"].map(lambda x: "biotype=protein_coding" in x)]
-            chunk = chunk.drop("type", axis=1).copy()
-            chunk["gene"] = chunk["info"].map(lambda x: self.gene_regex.match(x).group(1))
-            chunk = chunk.drop("info", axis=1).copy()
-            gene_df.append(chunk)
-        gene_df = pd.concat(gene_df)
-        return gene_df.set_index("gene")
-
-    def read_promoters(self, before=2000, after=500):
-        """
-        :param before: number of basepairs to include before TSS
-        :param after: number of basepairs to include after TSS
-        :return:
-        """
-        annotation_df = self.read_dataframe(chunksize=1000)
-        promoters_df = []
-        for chunk in annotation_df:
-            chunk = chunk.loc[
-                chunk.apply(lambda x: ("mRNA" in x["type"]) and "Parent=gene" in x["info"], axis=1)
-            ].copy()
-            # Get the transcript name, e.g. "DDX11L1-202
-            chunk["transcript"] = chunk["info"].map(lambda x: self.transcript_regex.match(x).group(1))
-            # Translate coordinates to area around TSS
-
-            def transcripts_to_promoter(row):
-                if row["direction"] == "+":
-                    row["end"] = row["start"] + after
-                    row["start"] = row["end"] - before
-                elif row["direction"] == "-":
-                    row["start"] = row["end"] - after
-                    row["end"] = row["end"] + before
-                else:
-                    assert False
-                return row
-
-            chunk = chunk.apply(transcripts_to_promoter, axis=1)
-            chunk = chunk.drop(["type", "info"], axis=1)
-            promoters_df.append(chunk)
-        promoters_df = pd.concat(promoters_df)
-        return promoters_df.set_index("transcript")
-
-    def read_tss(self):
-        """
-        :param before: number of basepairs to include before TSS
-        :param after: number of basepairs to include after TSS
-        :return:
-        """
-        annotation_df = self.read_dataframe(chunksize=1000)
-        tss_df = []
-        for chunk in annotation_df:
-            chunk = chunk.loc[
-                chunk.apply(
-                    lambda x: ("RNA" in x["type"] or "transcript" in x["type"]) and "Parent=gene" in x["info"], axis=1
-                )
-            ].copy()
-            # Get the transcript name, e.g. "DDX11L1-202
-            chunk["transcript"] = chunk["info"].map(lambda x: self.transcript_regex.match(x).group(1))
-
-            chunk["tss"] = chunk.apply(lambda x: x["end"] if x["direction"] == "-" else x["start"], axis=1)
-            chunk = chunk.drop(["type", "info", "start", "end"], axis=1)
-            tss_df.append(chunk)
-        tss_df = pd.concat(tss_df)
-        return tss_df.set_index("transcript")
-
-
-class GFFTranscripts:
-    def __init__(self, ensemble_id):
-        self.ensemble_id = ensemble_id
-        self.exons: List[List[int]] = []
-
+def range_comparison_dist_fn(x, start, end):
+    if x.start > end or x.end < start:
+        # Not overlapping:
+        return min(abs(x.end - start), abs(x.start - end))
+    else:
+        # Overlapping:
+        return 0
 
 class GFFFeature:
-    def __init__(self, id=None, name=None):
-        self.name: str = name
+    def __init__(self, start, end, type, id, direction, name=None, parent=None):
+        self.start = start
+        self.end = end
+        self.type: str = type
         self.id: str = id
+        self.direction = direction
+        self.index_width = 100000
+        if name is None and id is not None:
+            if ":" in id:
+                name = id.split(":")[1]
+            else:
+                name = id
+        self.name: str = name
         self.children: Dict[str, GFFFeature] = {}
+        self.leafs: List[GFFFeature] = []
+        
+        self.sorted_children: List[GFFFeature] = []
+        self.parent = parent
+        
+        
+        
+    def build_sorted(self):
+        self.sorted_children = sorted(itertools.chain(self.children.values(), self.leafs), key=lambda x: x.start)
+        for child in self.sorted_children:
+            child.build_sorted()
+        
+    def get_in_range(self, start, end, max_recursion=0):
+        for feature in self.sorted_children:
+            if feature.start > end:
+                break
+            elif feature.end < start:
+                continue
+            else:
+                yield feature
+                if max_recursion > 0:
+                    for x in feature.get_in_range(start, end, max_recursion-1):
+                        yield x
 
 
-class GFFAnnotationChromosome:
-    def __init__(self, name):
-        self.name = name
-        self.tlos: Dict[str, GFFFeature] = {}
+    def get_nearest_feature(self, start=None, end=None, dist_fn=None, nearest=None, nearest_dist=10e10, max_recursion=0):
+        if dist_fn is None:
+            dist_fn = lambda x: range_comparison_dist_fn(x, start, end)
+            
+        for feature in self.sorted_children:
+            dist = dist_fn(feature)
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest = feature
+            else:
+                continue
+                
+        if max_recursion > 0:
+            return nearest.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion-1)
+        else:
+            return nearest, nearest_dist
 
+class GFFAnnotationsReader:
 
-class GFFAnnotationsObject:
     def __init__(self):
-        self.gene_regex = re.compile("ID=gene:(ENSG[^;]*);Name=([^;]*);.*")
-        self.transcript_regex = re.compile(".*Parent=gene:([^;]*);Name=([^;]*);.*")
-        self.exon_parent_regex = re.compile(".*Parent=transcript:([^;]*);.*")
-
-        self.id_regex = re.compile("ID=([^:]*):([^;]*).*")
-
-        self.chromosomes: Dict[str, GFFAnnotationChromosome] = {}
-
+        self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon"]
+        self.index = {}
 
-    def read_genes(self, gff_file, protein_coding=True):
-        annotation_df = pd.read_csv(
-            gff_file,
-            sep="\t",
-            comment="#",
-            usecols=[0, 2, 3, 4, 6, 8],
-            header=None,
-            names=["chr", "type", "start", "end", "direction", "info"],
-            dtype={"chr": str},
-            chunksize=1000,
-        )
-        gene_df = []
-        for chunk in annotation_df:
-            for index, row in chunk.iterrows():
-                if row["chr"] != cur_chrom.name:
-                    cur_chrom = GFFAnnotationChromosome(row["chr"])
+    def read(self, gff_file, only_protein_coding=True):
+        with open(gff_file, "rt") as f:
+            
+            rowit = (
+                {"chr": l[0], "type": l[2], "start": int(l[3]), "end": int(l[4]), "direction": l[6], "info": l[8]}
+                for l in (l.split("\t") for l in f if l[0] != "#")
+            )
+
+            cur_chrom = None
+            for row in rowit:
+                if cur_chrom is None or cur_chrom.id != row["chr"]:
+                    cur_chrom = GFFFeature(0, 0, type="chrom", direction="+", id=row["chr"])
                     self.chromosomes[row["chr"]] = cur_chrom
+                    open_features: Dict[str, GFFFeature] = {}
 
                 if row["type"] not in self.included_features:
                     continue
 
-                has_parent = "Parent" in row["info"]
-                if has_parent:
-                    if cur_tlo is None:
+                info = [kv.split("=") for kv in row["info"].split(";")]
+                info = {k: v for k, v in info}
+                id = info.get("ID", None)
+                name = info.get("Name", None)
+                parent_id = info.get("Parent", None)
+
+                if "biotype" in info:
+                    if only_protein_coding and not info["biotype"] == "protein_coding":
                         continue
 
-                id_mitch = self.id_regex.match(row["info"])
-                id = None if id_mitch is None else id_mitch.group(2)
-                cur_feature = GFFFeature(id=id)
+                cur_feature = GFFFeature(row["start"], row["end"], type=row["type"], id=id, direction=row["direction"], name=name)
 
-                if nothas_parent:
-                    cur_tlo.children[id] = cur_feature
+                if parent_id is not None:
+                    if parent_id not in open_features:
+                        continue
+                    cur_parent = open_features[parent_id]
                 else:
-                    cur_tlo.children[id] = cur_feature
-                    cur_tlo = cur_feature
+                    cur_parent = cur_chrom
 
+                cur_feature.parent = cur_parent
 
-path = "/hps/research1/birney/users/adrien/misc/analyses/Medulloblastoma_DNA_promethion/DNA_pipeline_2/results/input/annotation/annotation.gff3"
-gff = GFFAnnotationsObject()
-gff.read_genes(path)
+                if id is None:
+                    # Only leafs have no id
+                    cur_parent.leafs.append(cur_feature)
+                else:
+                    cur_parent.children[id] = cur_feature
+                    open_features[id] = cur_feature
+
+    def build_index(self):
+        for chrom_container in self.chromosomes.values():
+            chrom_container.build_sorted()
+
+    def _print(self, feature, depth=2):
+        for fid, f in feature.children.items():
+            print("".join(["-"] * depth), fid)
+            self._print(f, depth + 2)
+        for f in feature.leafs:
+            print("".join(["-"] * depth), f.start, f.end)
+
+    def print(self):
+        for chromname, chrom in self.chromosomes.items():
+            print(chromname)
+            self._print(chrom)
+            

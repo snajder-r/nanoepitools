@@ -13,6 +13,19 @@ def range_comparison_dist_fn(x, start, end):
     else:
         # Overlapping:
         return 0
+    
+def point_to_promoter_dist_fn(feature, start, end, promoter_before_tss, promoter_after_tss):
+    if feature.direction == "+":
+        promoter_range = [feature.start - promoter_before_tss, feature.start + promoter_after_tss]
+    elif feature.direction == "-":
+        promoter_range = [feature.end - promoter_after_tss, feature.end + promoter_before_tss]
+    
+    if promoter_range[0] > end or promoter_range[1] < start:
+        # Not overlapping:
+        return min([np.abs(x-y) for x in promoter_range for y in (start, end)])
+    else:
+        # Overlapping:
+        return 0
 
 class GFFFeature:
     def __init__(self, start, end, type, id, direction, name=None, parent=None):
@@ -21,7 +34,6 @@ class GFFFeature:
         self.type: str = type
         self.id: str = id
         self.direction = direction
-        self.index_width = 100000
         if name is None and id is not None:
             if ":" in id:
                 name = id.split(":")[1]
@@ -33,14 +45,18 @@ class GFFFeature:
         
         self.sorted_children: List[GFFFeature] = []
         self.parent = parent
-        
-        
-        
+    
+    def sanitized_id(self):
+        if ":" in self.id:
+            return self.id.split(":")[1]
+        else:
+            return self.id
+    
     def build_sorted(self):
         self.sorted_children = sorted(itertools.chain(self.children.values(), self.leafs), key=lambda x: x.start)
         for child in self.sorted_children:
             child.build_sorted()
-        
+    
     def get_in_range(self, start, end, max_recursion=0):
         for feature in self.sorted_children:
             if feature.start > end:
@@ -52,22 +68,33 @@ class GFFFeature:
                 if max_recursion > 0:
                     for x in feature.get_in_range(start, end, max_recursion-1):
                         yield x
+    
 
-
-    def get_nearest_feature(self, start=None, end=None, dist_fn=None, nearest=None, nearest_dist=10e10, max_recursion=0):
+    def get_nearest_feature(self, start=None, end=None, dist_fn=None, nearest=None, nearest_dist=10e15, max_recursion=0, min_recursion=0):
         if dist_fn is None:
             dist_fn = lambda x: range_comparison_dist_fn(x, start, end)
             
         for feature in self.sorted_children:
-            dist = dist_fn(feature)
+            if min_recursion > 0 and len(feature.sorted_children) > 0:
+                _, dist = feature.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion - 1, min_recursion=min_recursion-1)
+            else:
+                dist = dist_fn(feature)
+            
+            if max_recursion > 0 and len(feature.sorted_children) == 0:
+                # If we are looking for a deeper feature but this one doesn't contain any, skip it
+                continue
+            
             if dist < nearest_dist:
                 nearest_dist = dist
                 nearest = feature
             else:
                 continue
                 
+        if nearest is None:
+            return None, np.inf
+        
         if max_recursion > 0:
-            return nearest.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion-1)
+            return nearest.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion-1, min_recursion=min_recursion-1)
         else:
             return nearest, nearest_dist
 
@@ -76,7 +103,6 @@ class GFFAnnotationsReader:
     def __init__(self):
         self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon"]
-        self.index = {}
 
     def read(self, gff_file, only_protein_coding=True):
         with open(gff_file, "rt") as f:

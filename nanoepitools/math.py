@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import rankdata
+import scipy
 
 from typing import Tuple
 
@@ -36,7 +37,7 @@ def fdr_from_pvals(p_vals: np.ndarray) -> np.ndarray:
     ranked_p_values = rankdata(p_vals)
     fdr = p_vals * len(p_vals) / ranked_p_values
     fdr[fdr > 1] = 1
-
+    
     return fdr
 
 
@@ -53,3 +54,15 @@ def bs_from_llrs(llrs: np.ndarray, thres: float = 1, min_reads: int = 1) -> floa
     if len(llrs_used) < min_reads:
         return np.nan
     return (llrs_used > 0).sum() / len(llrs_used)
+
+
+def nangmean(x: np.ndarray) -> float:
+    """ Computes geometric mean while ignoring NaNs """
+    x = x[~np.isnan(x)]
+    return scipy.stats.gmean(x)
+
+def maxabs(x: np.ndarray) -> float:
+    if not isinstance(x, np.ndarray):
+        x = np.array(x)
+    """ Returns the value with the maximum magnitude """
+    return x[np.unravel_index(np.argmax(np.abs(x)), x.shape)]

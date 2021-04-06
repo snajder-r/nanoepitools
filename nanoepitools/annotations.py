@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 from typing import Union, IO
 from pathlib import Path
@@ -7,26 +8,72 @@ import numpy as np
 import pandas as pd
 
 
-def range_comparison_dist_fn(x, start, end):
-    if x.start > end or x.end < start:
+def range_comparison_dist_fn(feature: GFFFeature, start, end):
+    """Distance function between """
+    if feature.start > end or feature.end < start:
         # Not overlapping:
-        return min(abs(x.end - start), abs(x.start - end))
+        return min(abs(feature.end - start), abs(feature.start - end))
     else:
         # Overlapping:
         return 0
 
-def point_to_promoter_dist_fn(feature, start, end, promoter_before_tss, promoter_after_tss):
-    if feature.direction == "+":
-        promoter_range = [feature.start - promoter_before_tss, feature.start + promoter_after_tss]
-    elif feature.direction == "-":
-        promoter_range = [feature.end - promoter_after_tss, feature.end + promoter_before_tss]
+
+class FeatureInRangeFinder:
+    """This class shouldn't be instantiated outside of the GFFFeatures
+    It is used to avoid copy&pasting the code for finding features that overlap
+    a certain genomic range in (a) sorted and (b) unsorted lists"""
     
-    if promoter_range[0] > end or promoter_range[1] < start:
-        # Not overlapping:
-        return min([np.abs(x-y) for x in promoter_range for y in (start, end)])
-    else:
-        # Overlapping:
-        return 0
+    def __init__(self, parent_feature: GFFFeature, input_is_sorted: bool):
+        """
+        :param parent_feature: Typically a chromosome feature
+        :param input_is_sorted: Whether the ranges that will be queried later will be sorted.
+                                If this is true, the search will be O(N+M) time, whereas
+                                if this is false, the search will be N*M time. But beware,
+                                there are no sanity checks! If you say they are sorted, and
+                                then give me unsorted ranges, you will miss hits!
+        """
+        self.parent_feature = parent_feature
+        self.earliest_index = 0
+        self.input_is_sorted = input_is_sorted
+    
+    def find(self, start: int, end: int, range_transform=None, max_recursion=0, min_recursion=0):
+        """
+        Returns a generator! Finds all child features which overlap [start,end]
+        :param start: the start location
+        :param end:
+        :param range_transform:
+        :param max_recursion:
+        :param min_recursion:
+        :return:
+        """
+        if range_transform is None:
+            # identity
+            def range_transform(x):
+                return x.start, x.end
+        
+        children = self.parent_feature.sorted_children
+        if self.input_is_sorted:
+            children = children[self.earliest_index :]
+        for feature in children:
+            if range_transform(feature)[0] > end and min_recursion <= 0:
+                break
+            elif range_transform(feature)[1] < start and min_recursion <= 0:
+                if self.input_is_sorted:
+                    self.earliest_index += 1
+                continue
+            else:
+                if max_recursion > 0:
+                    for x in feature.in_range_finder.find(
+                        start,
+                        end,
+                        range_transform=range_transform,
+                        max_recursion=max_recursion - 1,
+                        min_recursion=min_recursion - 1,
+                    ):
+                        yield x
+                else:
+                    yield feature
+
 
 class GFFFeature:
     def __init__(self, start, end, type, id, direction, name=None, parent=None):
@@ -46,6 +93,8 @@ class GFFFeature:
         
         self.sorted_children: List[GFFFeature] = []
         self.parent = parent
+        # Default finder
+        self.in_range_finder = FeatureInRangeFinder(self, input_is_sorted=False)
     
     def sanitized_id(self):
         if ":" in self.id:
@@ -58,56 +107,29 @@ class GFFFeature:
         for child in self.sorted_children:
             child.build_sorted()
     
-    def get_in_range(self, start, end, range_transform = None, min_recursion=0, max_recursion=0):
-        if range_transform is None:
-            # identity
-            def range_transform(x):
-                return x.start, x.end
-        for feature in self.sorted_children:
-            if range_transform(feature)[0] > end and min_recursion <= 0:
-                break
-            elif range_transform(feature)[1] < start and min_recursion <= 0:
-                continue
-            else:
-                if max_recursion > 0:
-                    for x in feature.get_in_range(start, end, range_transform=range_transform, max_recursion=max_recursion-1, min_recursion=min_recursion-1):
-                        yield x
-                else:
-                    yield feature
+    def get_in_range(self, start, end, range_transform=None, min_recursion=0, max_recursion=0):
+        return self.in_range_finder.find(
+            start, end, range_transform=range_transform, min_recursion=min_recursion, max_recursion=max_recursion
+        )
     
-    def get_sorted_in_range_finder(outer_self):
+    def get_sorted_in_range_finder(self):
         """If you are searching for annotations for a SORTED list of ranges,
         then this allows you to do so in a near linear time, as it continues
         to move up the pointer at which searching starts"""
-        class seeker:
-            def __init__(inner_self):
-                inner_self.earliest_index = 0
-            
-            def find(inner_self, start, end, range_transform=None, max_recursion=0, min_recursion=0):
-                if range_transform is None:
-                    # identity
-                    def range_transform(x):
-                        return x.start, x.end
-                
-                for feature in outer_self.sorted_children[inner_self.earliest_index:]:
-                    if range_transform(feature)[0] > end and min_recursion <= 0:
-                        break
-                    elif range_transform(feature)[1] < start and min_recursion <= 0:
-                        inner_self.earliest_index+=1
-                        continue
-                    else:
-                        if max_recursion > 0:
-                            for x in feature.get_in_range(start, end, range_transform=range_transform, max_recursion=max_recursion - 1, min_recursion=min_recursion-1):
-                                yield x
-        return seeker()
+        
+        return FeatureInRangeFinder(self, input_is_sorted=True)
     
-    def get_nearest_feature(self, start=None, end=None, dist_fn=None, nearest=None, nearest_dist=10e15, max_recursion=0, min_recursion=0):
+    def get_nearest_feature(
+        self, start=None, end=None, dist_fn=None, nearest=None, nearest_dist=10e15, max_recursion=0, min_recursion=0
+    ):
         if dist_fn is None:
             dist_fn = lambda x: range_comparison_dist_fn(x, start, end)
         
         for feature in self.sorted_children:
             if min_recursion > 0 and len(feature.sorted_children) > 0:
-                _, dist = feature.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion - 1, min_recursion=min_recursion-1)
+                _, dist = feature.get_nearest_feature(
+                    dist_fn=dist_fn, max_recursion=max_recursion - 1, min_recursion=min_recursion - 1
+                )
             else:
                 dist = dist_fn(feature)
             
@@ -125,12 +147,21 @@ class GFFFeature:
             return None, np.inf
         
         if max_recursion > 0:
-            return nearest.get_nearest_feature(dist_fn=dist_fn, max_recursion=max_recursion-1, min_recursion=min_recursion-1)
+            return nearest.get_nearest_feature(
+                dist_fn=dist_fn, max_recursion=max_recursion - 1, min_recursion=min_recursion - 1
+            )
         else:
             return nearest, nearest_dist
+    
+    def __repr__(self):
+        parent = self
+        while parent.parent is not None:
+            parent = parent.parent
+        chrom = parent.name
+        return f"{self.id} ({parent.name}:{self.start}-{self.end})"
+
 
 class GFFAnnotationsReader:
-    
     def __init__(self):
         self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon", "ncRNA_gene", "pseudogene", "lnc_RNA"]
@@ -166,7 +197,9 @@ class GFFAnnotationsReader:
                     # "only_protein_coding" requires a biotype annotation
                     continue
                 
-                cur_feature = GFFFeature(row["start"], row["end"], type=row["type"], id=id, direction=row["direction"], name=name)
+                cur_feature = GFFFeature(
+                    row["start"], row["end"], type=row["type"], id=id, direction=row["direction"], name=name
+                )
                 
                 if parent_id is not None:
                     if parent_id not in open_features:
@@ -192,8 +225,9 @@ class GFFAnnotationsReader:
         """
         :param gene_id: Gene ID without the "gene:" part at the beginning
         """
-        genes_found = [chrom.children[f"gene:{gene_id}"] for chrom in self.chromosomes.values() if f"gene:{gene_id}" in chrom.children]
-        assert len(genes_found) <=1, "Multiple genes with the same id were found"
+        gene_id = f"gene:{gene_id}"
+        genes_found = [chrom.children[gene_id] for chrom in self.chromosomes.values() if gene_id in chrom.children]
+        assert len(genes_found) <= 1, "Multiple genes with the same id were found"
         if len(genes_found) == 0:
             return None
         else:
@@ -210,4 +244,3 @@ class GFFAnnotationsReader:
         for chromname, chrom in self.chromosomes.items():
             print(chromname)
             self._print(chrom)
-            

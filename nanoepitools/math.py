@@ -55,14 +55,18 @@ def bs_from_llrs(llrs: np.ndarray, thres: float = 1, min_reads: int = 1) -> floa
         return np.nan
     return (llrs_used > 0).sum() / len(llrs_used)
 
+def __ensure_numpy(x) -> np.ndarray:
+    if not isinstance(x, np.ndarray):
+        x = np.array(x)
+    return x
 
 def nangmean(x: np.ndarray) -> float:
     """ Computes geometric mean while ignoring NaNs """
+    x = __ensure_numpy(x)
     x = x[~np.isnan(x)]
     return scipy.stats.gmean(x)
 
 def maxabs(x: np.ndarray) -> float:
-    if not isinstance(x, np.ndarray):
-        x = np.array(x)
+    x = __ensure_numpy(x)
     """ Returns the value with the maximum magnitude """
     return x[np.unravel_index(np.argmax(np.abs(x)), x.shape)]

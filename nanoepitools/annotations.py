@@ -4,6 +4,7 @@ from typing import Union, IO
 from pathlib import Path
 import itertools
 
+import mygene
 import numpy as np
 import pandas as pd
 
@@ -244,3 +245,58 @@ class GFFAnnotationsReader:
         for chromname, chrom in self.chromosomes.items():
             print(chromname)
             self._print(chrom)
+
+
+class GeneNameToEnsemblID:
+    def __init__(self, gff: GFFAnnotationsReader, verbose=False):
+        self.gene_name_to_id_lookup = {
+            gene.name: gene.sanitized_id() for chrom in gff.chromosomes.values() for gene in chrom.children.values()
+        }
+        self.genename_regex = re.compile("^([A-Za-z0-9-\.]*)[/(]*")
+        self.mg = mygene.MyGeneInfo()
+        self.verbose = verbose
+    
+    def lookup_gene_id_from_gff(self, genename: str) -> str:
+        genename = self.genename_regex.match(genename).group(1)
+        return self.gene_name_to_id_lookup.get(genename, None)
+    
+    def __resolve_query_result(self, r):
+        if isinstance(r, list):
+            # There was multiple results
+            for r_entry in r:
+                if r_entry["gene"] in self.gene_name_to_id_lookup.values():
+                    # Prefer result that is also in the gff
+                    return r_entry["gene"]
+            return r[0]["gene"]  # first result as default
+        else:
+            # There was one result
+            return r["gene"]
+    
+    def __research_if_not_found(self, r):
+        if "ensembl" in r:
+            # we have results from the original query
+            return self.__resolve_query_result(r["ensembl"])
+        else:
+            return None
+    
+    def lookup_gene_ids_online(self, genesymbols):
+        symbol_cleaned_dict = {
+            symbol: self.genename_regex.match(symbol).group(1)
+            for row_symbols in genesymbols
+            for symbol in row_symbols.split(",")
+        }
+        cleaned_symbol_dict = {v: k for k, v in symbol_cleaned_dict.items()}
+        query_result = self.mg.querymany(
+            list(symbol_cleaned_dict.values()), fields="ensembl.gene", species="human", scopes=["symbol", "alias"], verbose=self.verbose
+        )
+        mapping_dict = {}
+        for r in query_result:
+            table_symbol = cleaned_symbol_dict[r["query"]]
+            mapping_dict[table_symbol] = self.__research_if_not_found(r)
+        return mapping_dict
+    
+    def translate_gene_names_to_ids(self, gene_symbols):
+        translated = {name: self.lookup_gene_id_from_gff(name) for name in gene_symbols}
+        untranslated = [name for name, id in translated.items() if id is None]
+        translated.update(self.lookup_gene_ids_online(untranslated))
+        return [translated.get(name, None) for name in gene_symbols]

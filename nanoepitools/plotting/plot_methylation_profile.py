@@ -10,7 +10,7 @@ from matplotlib.patches import Rectangle, Patch
 def plot_met_profile(matrix: np.array, samples: np.ndarray = None, sample_order: List[str] = None,
         sample_colors: Dict = None, site_genomic_pos=None, site_genomic_pos_end=None, marker_height=0.75,
         segment: np.array = None, highlights: List[Tuple] = None, highlight_color: Union[str, List[str]] = None,
-        min_marker_width_relative: float = 0.002, ):
+        min_marker_width_relative: float = 0.002, sample_hatch: Dict = None ):
     def val_to_color(val):
         return 1 - np.exp(-np.abs(val) * 0.5)
     
@@ -84,13 +84,20 @@ def plot_met_profile(matrix: np.array, samples: np.ndarray = None, sample_order:
     
     if sample_colors is not None:
         xlim = plt.xlim()
-        marker_width = (xlim[1] - xlim[0]) * 0.005
+        marker_width = (xlim[1] - xlim[0]) * 0.015
         for s, marker in sample_marker_range.items():
+            kwargs = {}
+            if sample_hatch is not None:
+                kwargs.update({"hatch":sample_hatch[s], "edgecolor":"w"})
+                
             patch = Rectangle((xlim[1] - marker_width * 2, marker[0]), marker_width, marker[1] - marker[0],
-                              color=sample_colors[s])
+                              facecolor=sample_colors[s], **kwargs)
             plt.gca().add_patch(patch)
-        
-        legend_elements = [Patch(facecolor=sample_colors[s], edgecolor=sample_colors[s], label=s) for s in sample_order]
+        if sample_hatch is not None:
+            legend_elements = [Patch(facecolor=sample_colors[s], edgecolor="w", hatch=sample_hatch[s], label=s) for s in sample_order]
+        else:
+            legend_elements = [Patch(facecolor=sample_colors[s], edgecolor="w", label=s) for s in sample_order]
+            
         plt.legend(handles=legend_elements)
     
     if segment is not None:

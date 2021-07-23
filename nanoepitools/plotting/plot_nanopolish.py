@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import nanoepitools.math as nem
+import nanoepiseg.math as nem
 import nanoepitools.nanopolish_calls as npc
 from nanoepitools.plotting.general_plotting import plot_2d_density
 from nanoepitools.util import pandas_index_intersect

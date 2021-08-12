@@ -47,12 +47,15 @@ class FeatureInRangeFinder:
         :param min_recursion:
         :return:
         """
+        children = self.parent_feature.sorted_children
         if range_transform is None:
             # identity
             def range_transform(x):
                 return x.start, x.end
-        
-        children = self.parent_feature.sorted_children
+        else:
+            # If range transform is not identity, we need to sort these accordingly,
+            # or else we can no longer assume they are ordered
+            children = sorted(children, key=lambda x: range_transform(x)[0])
         if self.input_is_sorted:
             children = children[self.earliest_index :]
         for feature in children:

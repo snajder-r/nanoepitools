@@ -8,6 +8,35 @@
             <mapping deploy="/code/nanoepiseg" local="$PROJECT_DIR$/../nanoepiseg" web="/" />
             <mapping deploy="/code/nanoepitools" local="$PROJECT_DIR$" />
             <mapping deploy="/data/medulloblastoma/analysis" local="$PROJECT_DIR$/../medulloblastoma_analysis" />
+            <mapping deploy="/code/nanopore" local="$PROJECT_DIR$/../nanopore" />
+            <mapping deploy="/code/MetH5Format" local="$PROJECT_DIR$/../MetH5Format" />
+            <mapping deploy="/code/pycoMeth2" local="$PROJECT_DIR$/../pycoMeth2" />
+            <mapping deploy="/plots" local="$PROJECT_DIR$/../plotsEbi" />
+            <mapping deploy="/plotly_dashboards" local="$PROJECT_DIR$/../plotly_dashboards" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="snajder@ebi:22 agent">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$/../nanoepiseg" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="snajder@ebi:22 agent (1)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$/../nanoepiseg" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="worker01">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$/../nanoepiseg" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

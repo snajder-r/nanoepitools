@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-import nanoepitools.math as nem
+import nanoepiseg.math as nem
 
 tol = 10e-6
 

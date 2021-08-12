@@ -5,7 +5,6 @@ import numpy as np
 import scipy.stats
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from bokeh.plotting import figure, output_file
 
 from nanoepitools.plotting.syncbot import SyncBot
 
@@ -136,11 +135,6 @@ class PlotArchiver:
         # it right away, it may not be displayed
         plt.pause(0.0001)
         plt.close(fig)
-    
-    def bokeh_open_html(self, key):
-        self.ensure_project_path_exists()
-        path = self.get_plot_path(key, "html")
-        output_file(path)
     
     def open_multipage_pdf(self, key):
         self.ensure_project_path_exists()

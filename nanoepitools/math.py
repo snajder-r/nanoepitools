@@ -70,3 +70,7 @@ def maxabs(x: np.ndarray) -> float:
     x = __ensure_numpy(x)
     """ Returns the value with the maximum magnitude """
     return x[np.unravel_index(np.argmax(np.abs(x)), x.shape)]
+
+def nanpearsonr(a: np.ndarray, b:np.ndarray):
+    idx = ~np.isnan(a) & ~np.isnan(b)
+    return scipy.stats.pearsonr(a[idx], b[idx])

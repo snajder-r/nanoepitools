@@ -4,6 +4,7 @@ from typing import List
 import numpy as np
 import scipy.stats
 import matplotlib.pyplot as plt
+import matplotlib
 from matplotlib.backends.backend_pdf import PdfPages
 
 from nanoepitools.plotting.syncbot import SyncBot
@@ -114,13 +115,14 @@ class PlotArchiver:
     
     def savefig(self, key="figure", fig=None, close=True):
         self.ensure_project_path_exists()
+        legends = [c for c in plt.gca().get_children() if isinstance(c, matplotlib.legend.Legend)]
         if fig is None:
             fig = plt.gcf()
         if self.pdf is not None:
-            self.pdf.pdf.savefig(fig)
+            self.pdf.pdf.savefig(fig, bbox_inches="tight", bbox_extra_artists=legends)
         else:
             path = self.get_plot_path(key)
-            fig.savefig(path)
+            fig.savefig(path, bbox_inches="tight", bbox_extra_artists=legends)
             self.syncplots()
         if close:
             plt.close(fig)

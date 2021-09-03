@@ -9,6 +9,7 @@ from matplotlib.patches import Rectangle, Patch
 from meth5.sparse_matrix import SparseMethylationMatrixContainer
 from nanoepitools.math import p_to_llr
 
+
 def plot_met_profile(
     matrix: np.ndarray,
     samples: np.ndarray = None,
@@ -20,9 +21,10 @@ def plot_met_profile(
     segment: np.array = None,
     highlights: List[Tuple] = None,
     highlight_color: Union[str, List[str]] = None,
+    highlights_in_genomic_space: bool = False,
     min_marker_width_relative: float = 0.002,
     sample_hatch: Dict = None,
-    aggregate_samples=False
+    aggregate_samples=False,
 ):
     def val_to_color(val):
         return 1 - np.exp(-np.abs(val) * 0.5)
@@ -44,7 +46,6 @@ def plot_met_profile(
     end = matrix.shape[1]
     sample_marker_range = {}
     
-    
     for s in sample_order:
         x = np.arange(start, end)
         part_matrix = matrix[:, x][(samples == s)]
@@ -56,7 +57,7 @@ def plot_met_profile(
             part_matrix = (part_matrix > 2.5).sum(axis=0) / (np.abs(part_matrix) > 2.5).sum(axis=0)
             part_matrix = p_to_llr(part_matrix)
             part_matrix[np.isnan(part_matrix)] = 0
-            part_matrix = part_matrix[np.newaxis,:]
+            part_matrix = part_matrix[np.newaxis, :]
         
         active_reads = np.array((part_matrix != 0).sum(axis=1)).flatten() > 0
         
@@ -69,7 +70,12 @@ def plot_met_profile(
         y = y.flatten()[hasval]
         matrix_data = np.array(part_matrix).flatten()[hasval]
         
-        color = [[24/255, 3/255, 248/255, val_to_color(-v)] if v < 0 else [252/255, 127/255, 44/255, val_to_color(v)] for v in matrix_data]
+        color = [
+            [24 / 255, 3 / 255, 248 / 255, val_to_color(-v)]
+            if v < 0
+            else [252 / 255, 127 / 255, 44 / 255, val_to_color(v)]
+            for v in matrix_data
+        ]
         
         if site_genomic_pos is not None:
             if site_genomic_pos_end is not None:
@@ -81,20 +87,17 @@ def plot_met_profile(
                 marker_adjust[marker_adjust < 0] = 0
                 x = x - marker_adjust
                 x_end = x_end + marker_adjust
-        
-        if site_genomic_pos_end is None:
-            plt.scatter(x, y, c=color, marker="|", s=15 * (0.25 + marker_height))
         else:
-            # if the end location for each marker is given, we need to plot
-            # rectangles
-            
-            patches = [Rectangle((x[i], y[i]), x_end[i] - x[i] + 1, marker_height) for i in range(len(x))]
-            
-            patch_collection = PatchCollection(patches)
-            patch_collection.set_color(color)
-            patch_collection.set_edgecolor(None)
-            plt.gca().add_collection(patch_collection)
-            plt.gca().autoscale_view()
+            x = x - 0.4
+            x_end = x + 0.8
+        
+        patches = [Rectangle((x[i], y[i]), x_end[i] - x[i], marker_height) for i in range(len(x))]
+        
+        patch_collection = PatchCollection(patches)
+        patch_collection.set_color(color)
+        patch_collection.set_edgecolor(None)
+        plt.gca().add_collection(patch_collection)
+        plt.gca().autoscale_view()
         
         if sample_colors is not None:
             sample_marker_range[s] = (y_off, part_matrix.shape[0] + y_off)
@@ -115,7 +118,7 @@ def plot_met_profile(
                 marker_width,
                 marker[1] - marker[0],
                 facecolor=sample_colors[s],
-                **kwargs
+                **kwargs,
             )
             plt.gca().add_patch(patch)
         if sample_hatch is not None:
@@ -125,7 +128,7 @@ def plot_met_profile(
         else:
             legend_elements = [Patch(facecolor=sample_colors[s], edgecolor="w", label=s) for s in sample_order]
         
-        plt.legend(handles=legend_elements,  bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc="upper left")
     
     if segment is not None:
         plot_segment_lines(segment, site_genomic_pos=site_genomic_pos)
@@ -135,13 +138,16 @@ def plot_met_profile(
             highlights,
             highlight_color=highlight_color,
             site_genomic_pos=site_genomic_pos,
+            highlights_in_genomic_space=highlights_in_genomic_space,
         )
 
 
-def plot_vertical_highlights(highlights: List[Tuple], highlight_color="b", site_genomic_pos=None):
+def plot_vertical_highlights(
+    highlights: List[Tuple], highlight_color="b", site_genomic_pos=None, highlights_in_genomic_space=False
+):
     if highlights is not None:
         for i, highlight_range in enumerate(highlights):
-            if site_genomic_pos is not None:
+            if site_genomic_pos is not None and not highlights_in_genomic_space:
                 highlight_range = [site_genomic_pos[p] for p in highlight_range]
             
             if isinstance(highlight_color, list):
@@ -175,5 +181,5 @@ def plot_met_profile_from_matrix(matrix: SparseMethylationMatrixContainer, **kwa
         samples=matrix.read_samples,
         site_genomic_pos=matrix.genomic_coord,
         site_genomic_pos_end=matrix.genomic_coord_end,
-        **kwargs
+        **kwargs,
     )

@@ -14,11 +14,12 @@ def llr_to_p(llr, prior=0.5):
     return 1 / (1 + np.exp(-llr) * (1 / prior - 1))
 
 
-def p_to_llr(p, prior=0.5):
+def p_to_llr(p, prior=0.5, eps=1e-16):
     """
     Converts the posterior probability p(a|x) into a log-likelihood ratio
-    log(p(x|a)/p(x|~a)) given a prior pa(a)
+    log(p(x|a)/p(x|~a)) given a prior p(a)
     """
+    p = np.clip(p, eps, 1-eps) # Avoid numerical errors when p is 0 or 1
     return -np.log(prior * (1 - p) / (p * (1 - prior)))
 
 

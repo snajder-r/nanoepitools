@@ -133,12 +133,14 @@ class MethylationPlot:
     def plot_has_value_indicator(self, x_start, x_end, y):
         x = (x_end + x_start) / 2
         y = y + self.marker_height / 2
-        radius = 0.3
+        radius = 0.5
         patches = [
             Circle(
                 (0, 0),
                 radius=radius,
-                transform=ScaledTranslation(x[i], y[i], plt.gca().transData), edgecolor=None, facecolor="k"
+                transform=ScaledTranslation(x[i], y[i], plt.gca().transData),
+                edgecolor=None,
+                facecolor="k",
             )
             for i in range(len(x))
         ]

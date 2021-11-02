@@ -88,6 +88,7 @@ class MethylationPlot:
         sample_hatch: Optional[Dict] = None,
         aggregate_samples: bool = False,
         color_map=default_color_map,
+        show_has_value_indicator=True
     ):
         self.marker_height = marker_height
         self.min_marker_width_relative = min_marker_width_relative
@@ -95,6 +96,7 @@ class MethylationPlot:
         self.sample_hatch = sample_hatch
         self.aggregate_samples = aggregate_samples
         self.color_map = color_map
+        self.show_has_value_indicator = show_has_value_indicator
     
     def plot_legend(self, sample_marker_range, sample_order):
         if self.sample_colors is not None:
@@ -131,6 +133,8 @@ class MethylationPlot:
         plt.gca().add_collection(patch_collection)
     
     def plot_has_value_indicator(self, x_start, x_end, y):
+        if not self.show_has_value_indicator:
+            return
         x = (x_end + x_start) / 2
         y = y + self.marker_height / 2
         radius = 0.5
@@ -230,7 +234,7 @@ class MethylationPlot:
         self.plot_legend(sample_marker_range, sample_order)
     
     def plot_met_profile_from_matrix(self, matrix: SparseMethylationMatrixContainer, **kwargs):
-        plot_met_profile(
+        plot_met_profile(self,
             matrix.met_matrix.todense(),
             samples=matrix.read_samples,
             site_genomic_pos=matrix.genomic_coord,
@@ -248,12 +252,14 @@ def plot_met_profile(
     site_genomic_pos_end=None,
     marker_height=0.75,
     segment: np.array = None,
+    segments_in_coord_space=False,
     highlights: List[Tuple] = None,
     highlight_color: Union[str, List[str]] = None,
     highlights_in_genomic_space: bool = False,
     min_marker_width_relative: float = 0.002,
     sample_hatch: Dict = None,
     aggregate_samples=False,
+    show_has_value_indicator=True,
 ):
     """Deprecated but here for backwards compatibility"""
     p = MethylationPlot(
@@ -262,7 +268,7 @@ def plot_met_profile(
         sample_colors=sample_colors,
         sample_hatch=sample_hatch,
         aggregate_samples=aggregate_samples,
-        color_map=default_color_map,
+        color_map=default_color_map, show_has_value_indicator=show_has_value_indicator
     )
     p.plot_met_profile(
         matrix=matrix,
@@ -279,7 +285,7 @@ def plot_met_profile(
             highlights_in_genomic_space=highlights_in_genomic_space,
         )
     if segment is not None:
-        plot_segment_lines(segment=segment, site_genomic_pos_start=site_genomic_pos)
+        plot_segment_lines(segment=segment, site_genomic_pos_start=site_genomic_pos, segments_in_coord_space=segments_in_coord_space)
 
 
 def plot_met_profile_from_matrix(matrix: SparseMethylationMatrixContainer, **kwargs):

@@ -52,6 +52,7 @@ class FeatureInRangeFinder:
             # identity
             def range_transform(x):
                 return x.start, x.end
+        
         else:
             # If range transform is not identity, we need to sort these accordingly,
             # or else we can no longer assume they are ordered
@@ -170,7 +171,7 @@ class GFFAnnotationsReader:
         self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon", "ncRNA_gene", "pseudogene", "lnc_RNA"]
     
-    def read(self, gff_file, only_protein_coding=True):
+    def read(self, gff_file, only_protein_coding=True, chroms=None):
         with open(gff_file, "rt") as f:
             
             rowit = (
@@ -180,6 +181,8 @@ class GFFAnnotationsReader:
             
             cur_chrom = None
             for row in rowit:
+                if chroms is not None and row["chr"] not in chroms:
+                    continue
                 if cur_chrom is None or cur_chrom.id != row["chr"]:
                     cur_chrom = GFFFeature(0, 0, type="chrom", direction="+", id=row["chr"])
                     self.chromosomes[row["chr"]] = cur_chrom
@@ -290,7 +293,11 @@ class GeneNameToEnsemblID:
         }
         cleaned_symbol_dict = {v: k for k, v in symbol_cleaned_dict.items()}
         query_result = self.mg.querymany(
-            list(symbol_cleaned_dict.values()), fields="ensembl.gene", species="human", scopes=["symbol", "alias"], verbose=self.verbose
+            list(symbol_cleaned_dict.values()),
+            fields="ensembl.gene",
+            species="human",
+            scopes=["symbol", "alias"],
+            verbose=self.verbose,
         )
         mapping_dict = {}
         for r in query_result:

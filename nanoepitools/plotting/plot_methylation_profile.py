@@ -206,7 +206,7 @@ class MethylationPlot:
                     x = site_genomic_pos_start[x]  # Translate to actual pos on chrom
                     if site_genomic_pos_end is not None:
                         # Makes it so very short blocks are still visible
-                        marker_adjust = (min_marker_width - x_end + x) // 2
+                        marker_adjust = (min_marker_width - x_end + x) / 2
                         marker_adjust[marker_adjust < 0] = 0
                         x = x - marker_adjust
                         x_end = x_end + marker_adjust
@@ -252,7 +252,6 @@ def plot_met_profile(
     site_genomic_pos_end=None,
     marker_height=0.75,
     segment: np.array = None,
-    segments_in_coord_space=False,
     highlights: List[Tuple] = None,
     highlight_color: Union[str, List[str]] = None,
     highlights_in_genomic_space: bool = False,
@@ -285,8 +284,7 @@ def plot_met_profile(
             highlights_in_genomic_space=highlights_in_genomic_space,
         )
     if segment is not None:
-        plot_segment_lines(segment=segment, site_genomic_pos_start=site_genomic_pos, segments_in_coord_space=segments_in_coord_space)
-
+        plot_segment_lines(segment=segment, site_genomic_pos_start=site_genomic_pos)
 
 def plot_met_profile_from_matrix(matrix: SparseMethylationMatrixContainer, **kwargs):
     """Deprecated but here for backwards compatibility"""

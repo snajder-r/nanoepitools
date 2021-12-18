@@ -2,7 +2,7 @@ import gzip
 import numpy as np
 import tqdm
 
-from nanoepitools.annotations import GFFAnnotationsReader, GFFFeature
+from nanoepitools.annotations.annotations import GFFAnnotationsReader, GFFFeature
 from nanoepitools.annotations.enhancers import Enhancers
 import nanoepiseg.math as net_m
 

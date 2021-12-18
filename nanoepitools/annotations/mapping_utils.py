@@ -1,4 +1,4 @@
-from nanoepitools.annotations import GFFFeature, GFFAnnotationsReader
+from nanoepitools.annotations.annotations import GFFFeature, GFFAnnotationsReader
 
 
 class MapToPromoter:

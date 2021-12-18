@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="ebi">
+  <component name="PublishConfigData" autoUpload="Always" serverName="worker01">
     <serverData>
+      <paths name="EMBL">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$/../nanopore" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="ebi">
         <serverdata>
           <mappings>
@@ -35,8 +43,7 @@
       <paths name="worker01">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$/../nanoepiseg" web="/" />
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/code/nanoepitools" local="$PROJECT_DIR$" web="" />
           </mappings>
         </serverdata>
       </paths>

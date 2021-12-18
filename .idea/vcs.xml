@@ -2,9 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../MetH5Format" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../medulloblastoma_analysis" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../nanopore" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../pycoMeth2" vcs="Git" />
   </component>
 </project>

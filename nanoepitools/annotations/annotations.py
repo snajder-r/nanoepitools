@@ -1,12 +1,10 @@
 from __future__ import annotations
 import re
-from typing import Union, IO, Dict, List
-from pathlib import Path
+from typing import Dict, List
 import itertools
 
 import mygene
 import numpy as np
-import pandas as pd
 
 
 def range_comparison_dist_fn(feature: GFFFeature, start, end):

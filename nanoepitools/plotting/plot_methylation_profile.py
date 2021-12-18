@@ -88,7 +88,7 @@ class MethylationPlot:
         sample_hatch: Optional[Dict] = None,
         aggregate_samples: bool = False,
         color_map=default_color_map,
-        show_has_value_indicator=True,
+        show_has_value_indicator=True
     ):
         self.marker_height = marker_height
         self.min_marker_width_relative = min_marker_width_relative
@@ -206,7 +206,7 @@ class MethylationPlot:
                     x = site_genomic_pos_start[x]  # Translate to actual pos on chrom
                     if site_genomic_pos_end is not None:
                         # Makes it so very short blocks are still visible
-                        marker_adjust = (min_marker_width - x_end + x) // 2
+                        marker_adjust = (min_marker_width - x_end + x) / 2
                         marker_adjust[marker_adjust < 0] = 0
                         x = x - marker_adjust
                         x_end = x_end + marker_adjust

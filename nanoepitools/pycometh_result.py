@@ -1,13 +1,12 @@
+import tqdm
 import gzip
 import numpy as np
 import tqdm
 
 from nanoepitools.annotations.annotations import GFFAnnotationsReader, GFFFeature
 from nanoepitools.annotations.enhancers import Enhancers
-import nanoepiseg.math as net_m
 
-from mb_analysis.ase_asm_analysis.mapping_utils import MapToPromoter
-from nanoepitools.ranges import intersect_ranges_by_chromosome, intersect_ranges
+from nanoepitools.annotations.mapping_utils import MapToPromoter
 
 
 def merge_duplicate_diffmet_hits(oldhits):
@@ -33,6 +32,16 @@ def merge_duplicate_diffmet_hits(oldhits):
             b += 1
             newhits.append(hiti)
     return newhits
+
+
+def create_diffmet_entry(pycometh_line):
+    diff_met_entry = {}
+    diff_met_entry["chrom"] = pycometh_line["chromosome"]
+    diff_met_entry["start"] = pycometh_line["start"]
+    diff_met_entry["end"] = pycometh_line["end"]
+    diff_met_entry["diffmet"] = pycometh_line["diff"]
+    return diff_met_entry
+
 
 class PycomethOutput:
     def __init__(self, met_comp_file):
@@ -78,9 +87,11 @@ class PycomethOutput:
                         recomputed_pval = retest_fun(line["raw_llr_list"])
                         if recomputed_pval > pval_threshold:
                             continue
-                    
-                    line["adj_pvalue"] = float(line["adj_pvalue"])
-                    if line["adj_pvalue"] > pval_threshold:
+                    try:
+                        line["adj_pvalue"] = float(line["adj_pvalue"])
+                        if line["adj_pvalue"] > pval_threshold:
+                            continue
+                    except:
                         continue
                     
                     line["start"] = int(line["start"])
@@ -94,9 +105,11 @@ class PycomethOutput:
                         continue
                     if not b_minus_a:
                         line["diff"] = -line["diff"]
+                    
+                    line["chrom"] = line["chromosome"]
                     yield line
     
-    def load_promoters_hit(self, gff: GFFAnnotationsReader, promoter_before_tss, promoter_after_tss, **kwargs):
+    def load_promoters_hit(self, gff: GFFAnnotationsReader, promoter_before_tss, promoter_after_tss, map_to="gene", hits=None, **kwargs):
         diff_met_table = {}
         map_to_promoter = MapToPromoter(
             gff,
@@ -104,28 +117,32 @@ class PycomethOutput:
             promoter_after_tss=promoter_after_tss,
             input_will_be_sorted=True,
         )
-        import tqdm
-        lines = list(self.read_file(**kwargs))
-        for line in tqdm.tqdm(lines):
+        
+        if hits is None:
+            hits = list(self.read_file(**kwargs))
+        for line in tqdm.tqdm(hits):
             # find promoter
-            genes_recorded = set()
+            ids_recorded = set()
             for overlapping_promoter in map_to_promoter(line["chromosome"], line["start"], line["end"]):
                 # From transcript to gene
                 gene = overlapping_promoter.parent
                 # Record every gene just once (if multiple promoters per gene are hit)
-                if gene.id in genes_recorded:
-                    continue
-                genes_recorded.update({gene.id})
+                if map_to == "gene":
+                    id = gene.sanitized_id()
+                elif map_to == "transcript":
+                    id = overlapping_promoter.sanitized_id()
+                else:
+                    raise ValueError("map_to must be gene or transcript")
                 
-                diff_met_list = diff_met_table.get(gene.sanitized_id(), [])
-                diff_met_entry = {}
-                diff_met_entry["chrom"] = line["chromosome"]
-                diff_met_entry["start"] = line["start"]
-                diff_met_entry["end"] = line["end"]
-                diff_met_entry["diffmet"] = line["diff"]
+                if id in ids_recorded:
+                    continue
+                ids_recorded.update({id})
+                
+                diff_met_list = diff_met_table.get(id, [])
+                diff_met_entry = create_diffmet_entry(line)
                 diff_met_entry["gene_name"] = gene.name
                 diff_met_list.append(diff_met_entry)
-                diff_met_table[gene.sanitized_id()] = diff_met_list
+                diff_met_table[id] = diff_met_list
         return diff_met_table
     
     def load_gene_bodies_hit(self, gff: GFFAnnotationsReader, **kwargs):
@@ -136,11 +153,7 @@ class PycomethOutput:
             genes = list(gff_chrom.get_in_range(line["start"], line["end"], max_recursion=0))
             for gene in genes:
                 diff_met_list = diff_met_table.get(gene.id, [])
-                diff_met_entry = {}
-                diff_met_entry["chrom"] = line["chromosome"]
-                diff_met_entry["start"] = line["start"]
-                diff_met_entry["end"] = line["end"]
-                diff_met_entry["diffmet"] = line["diff"]
+                diff_met_entry = create_diffmet_entry(line)
                 diff_met_entry["gene_name"] = gene.name
                 diff_met_list.append(diff_met_entry)
                 diff_met_table[gene.id] = diff_met_list
@@ -158,12 +171,25 @@ class PycomethOutput:
                 gene = enhancers_row["nearest_gene"]
                 
                 diff_met_list = diff_met_table.get(gene.sanitized_id(), [])
-                diff_met_entry = {}
-                diff_met_entry["chrom"] = line["chromosome"]
-                diff_met_entry["start"] = line["start"]
-                diff_met_entry["end"] = line["end"]
-                diff_met_entry["diffmet"] = line["diff"]
+                diff_met_entry = create_diffmet_entry(line)
                 diff_met_entry["gene_name"] = gene.name
                 diff_met_list.append(diff_met_entry)
                 diff_met_table[gene.sanitized_id()] = diff_met_list
+        return diff_met_table
+    
+    def load_regions_hit(self, regions_df, hits=None, **kwargs):
+        diff_met_table = {}
+        if hits is None:
+            hits = self.read_file(**kwargs)
+        for line in hits:
+            regions_hit = regions_df.loc[
+                (regions_df["chr"] == line["chromosome"])
+                & (regions_df["start"] < line["end"])
+                & (line["start"] < regions_df["end"])
+            ]
+            for index, row in regions_hit.iterrows():
+                diff_met_list = diff_met_table.get(index, [])
+                diff_met_entry = create_diffmet_entry(line)
+                diff_met_list.append(diff_met_entry)
+                diff_met_table[index] = diff_met_list
         return diff_met_table

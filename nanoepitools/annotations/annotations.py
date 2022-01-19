@@ -161,7 +161,7 @@ class GFFFeature:
         while parent.parent is not None:
             parent = parent.parent
         chrom = parent.name
-        return f"{self.id} ({parent.name}:{self.start}-{self.end})"
+        return f"{self.id} ({chrom}:{self.start}-{self.end})"
 
 
 class GFFAnnotationsReader:
@@ -237,6 +237,17 @@ class GFFAnnotationsReader:
             return None
         else:
             return genes_found[0]
+    
+    def get_transcript(self, transcript_id: str) -> GFFFeature:
+        """
+        :param transcript_id: Transcript ID without the "transcript:" part at the beginning
+        """
+        transcript_id = f"transcript:{transcript_id}"
+        for chrom in self.chromosomes.values():
+            for gene in chrom.children.values():
+                if transcript_id in gene.children:
+                    return gene.children[transcript_id]
+        return None
     
     def _print(self, feature, depth=2):
         for fid, f in feature.children.items():

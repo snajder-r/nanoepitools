@@ -2,8 +2,6 @@ import numpy as np
 from scipy.stats import rankdata
 import scipy
 
-from typing import Tuple
-
 
 def llr_to_p(llr, prior=0.5):
     """

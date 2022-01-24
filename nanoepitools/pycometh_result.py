@@ -1,4 +1,3 @@
-import tqdm
 import gzip
 import numpy as np
 import tqdm
@@ -109,7 +108,9 @@ class PycomethOutput:
                     line["chrom"] = line["chromosome"]
                     yield line
     
-    def load_promoters_hit(self, gff: GFFAnnotationsReader, promoter_before_tss, promoter_after_tss, map_to="gene", hits=None, **kwargs):
+    def load_promoters_hit(
+        self, gff: GFFAnnotationsReader, promoter_before_tss, promoter_after_tss, map_to="gene", hits=None, **kwargs
+    ):
         diff_met_table = {}
         map_to_promoter = MapToPromoter(
             gff,
@@ -159,22 +160,33 @@ class PycomethOutput:
                 diff_met_table[gene.id] = diff_met_list
         return diff_met_table
     
-    def load_enhancers_hit(self, enhancers: Enhancers, **kwargs):
+    def load_enhancers_hit(self, enhancers: Enhancers, map_to="gene", hits=None, **kwargs):
         diff_met_table = {}
-        for line in self.read_file(**kwargs):
+        if hits is None:
+            hits = self.read_file(**kwargs)
+        for line in hits:
             enhancers_hit = enhancers.enhancers_df.loc[
                 (enhancers.enhancers_df["chr"] == line["chromosome"])
                 & (enhancers.enhancers_df["start"] < line["end"])
                 & (line["start"] < enhancers.enhancers_df["end"])
             ]
-            for _, enhancers_row in enhancers_hit.iterrows():
-                gene = enhancers_row["nearest_gene"]
+            
+            for index, enhancers_row in enhancers_hit.iterrows():
                 
-                diff_met_list = diff_met_table.get(gene.sanitized_id(), [])
                 diff_met_entry = create_diffmet_entry(line)
-                diff_met_entry["gene_name"] = gene.name
+                if map_to == "gene":
+                    gene = enhancers_row["nearest_gene"]
+                    diff_met_entry["gene_name"] = gene.name
+                    id = gene.sanitized_id()
+                elif map_to == "index":
+                    id = index
+                else:
+                    raise ValueError("map_to must be gene or index")
+                
+                diff_met_list = diff_met_table.get(id, [])
+                
                 diff_met_list.append(diff_met_entry)
-                diff_met_table[gene.sanitized_id()] = diff_met_list
+                diff_met_table[id] = diff_met_list
         return diff_met_table
     
     def load_regions_hit(self, regions_df, hits=None, **kwargs):

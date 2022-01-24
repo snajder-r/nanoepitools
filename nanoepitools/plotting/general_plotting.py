@@ -96,6 +96,8 @@ class PlotArchiver:
         self.project = project
         if config is None:
             config = dict()
+        else:
+            config = dict(config) # make a copy
         set_if_not_in_dict(config, "plot_archive_dir", Path.home().joinpath("nanoepitools_plots"))
         set_if_not_in_dict(config, "syncplot_config_file", None)  # let syncbot choose the default
         set_if_not_in_dict(config, "filetype", "pdf")

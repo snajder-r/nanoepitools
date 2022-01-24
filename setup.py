@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="nanoepitools",
-    version="0.1.0",
+    version="0.2.0",
     author="Rene Snajder",
     author_email="r.snajder@dkfz-heidelberg.de",
     description="Package for epigenetic analyses from Nanopore data",
@@ -18,7 +18,10 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-
-    python_requires='>=3.6',
+    install_requires=["mygene",
+                      "numpy",
+                      "pandas",
+                      "matplotlib",
+                      "scipy"],
+    python_requires='>=3.7',
 )
-# install_requires = ["numpy>=1.14.0", "h5py>=2.9.0", "pandas>=1.0.3", "matplotlib", ],

@@ -1,6 +1,5 @@
 import itertools
 
-import multiprocessing
 from multiprocessing.pool import Pool
 
 

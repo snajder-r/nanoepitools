@@ -91,8 +91,9 @@ class PDFPagesWrapper:
 
 
 class PlotArchiver:
-    def __init__(self, project, config=None):
-        matplotlib.use("Agg")
+    def __init__(self, project, config=None, headless=True):
+        if headless:
+            matplotlib.use("Agg")
         self.project = project
         if config is None:
             config = dict()

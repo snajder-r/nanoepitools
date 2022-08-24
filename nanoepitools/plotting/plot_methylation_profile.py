@@ -253,7 +253,6 @@ def plot_met_profile(
     site_genomic_pos_end=None,
     marker_height=0.75,
     segment: np.array = None,
-    segments_in_coord_space=False,
     highlights: List[Tuple] = None,
     highlight_color: Union[str, List[str]] = None,
     highlights_in_genomic_space: bool = False,
@@ -288,14 +287,14 @@ def plot_met_profile(
         )
     if segment is not None:
         plot_segment_lines(
-            segment=segment, site_genomic_pos_start=site_genomic_pos, segments_in_coord_space=segments_in_coord_space
+            segment=segment, site_genomic_pos_start=site_genomic_pos
         )
 
 
 def plot_met_profile_from_matrix(matrix: SparseMethylationMatrixContainer, **kwargs):
     """Deprecated but here for backwards compatibility"""
     plot_met_profile(
-        matrix.met_matrix.todense(),
+        np.array(matrix.met_matrix.todense()),
         samples=matrix.read_samples,
         site_genomic_pos=matrix.genomic_coord,
         site_genomic_pos_end=matrix.genomic_coord_end,

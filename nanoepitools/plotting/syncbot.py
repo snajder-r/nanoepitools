@@ -34,7 +34,7 @@ class SyncBot:
     def sync(self):
         for key in self.config:
             subconf = self.config[key]
-            rsync = f"rsync -avhL --delete {subconf['path']} dash:/data/syncplots/{subconf['name_on_server']}"
+            rsync = f"rsync -rL --delete {subconf['path']} dash:/data/syncplots/{subconf['name_on_server']}"
             if "exclude" in subconf:
                 rsync += " --exclude=".join([""] + subconf["exclude"])
             

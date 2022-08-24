@@ -169,7 +169,7 @@ class GFFAnnotationsReader:
         self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon", "ncRNA_gene", "pseudogene", "lnc_RNA"]
     
-    def read(self, gff_file, only_protein_coding=True, chroms=None):
+    def read(self, gff_file, only_protein_coding=True, chroms=None, max_transcript_support_level=None):
         with open(gff_file, "rt") as f:
             
             rowit = (
@@ -201,6 +201,13 @@ class GFFAnnotationsReader:
                 elif only_protein_coding:
                     # "only_protein_coding" requires a biotype annotation
                     continue
+                
+                if "transcript_support_level" in info and max_transcript_support_level is not None:
+                    try:
+                        if int(info["transcript_support_level"]) > max_transcript_support_level:
+                            continue
+                    except ValueError:
+                        continue
                 
                 cur_feature = GFFFeature(
                     row["start"], row["end"], type=row["type"], id=id, direction=row["direction"], name=name

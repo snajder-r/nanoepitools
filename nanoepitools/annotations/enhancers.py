@@ -23,11 +23,12 @@ class Enhancers:
     def __init__(self,enhancers_annotation_file):
         self.enhancers_annotation_file = enhancers_annotation_file
     
-    def load(self):
+    def load(self, replace_chr=True):
         self.enhancers_df = pd.read_csv(
             self.enhancers_annotation_file, sep="\t", usecols=[0, 1, 2], names=["chr", "start", "end"]
         )
-        self.enhancers_df["chr"] = self.enhancers_df["chr"].map(lambda x: x.replace("chr", ""))
+        if replace_chr:
+            self.enhancers_df["chr"] = self.enhancers_df["chr"].map(lambda x: x.replace("chr", ""))
     
     def annotate_nearest_transcript_label(self, gff):
         self.enhancers_df["label"] = self.enhancers_df.apply(lambda x: create_enhancer_label(x,gff), axis=1)

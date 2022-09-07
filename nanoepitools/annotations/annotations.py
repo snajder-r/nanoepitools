@@ -79,12 +79,13 @@ class FeatureInRangeFinder:
 
 
 class GFFFeature:
-    def __init__(self, start, end, type, id, direction, name=None, parent=None):
+    def __init__(self, start, end, type, id, direction, name=None, parent=None, info={}):
         self.start = start
         self.end = end
         self.type: str = type
         self.id: str = id
         self.direction = direction
+        self.info = info
         if name is None and id is not None:
             if ":" in id:
                 name = id.split(":")[1]
@@ -169,7 +170,7 @@ class GFFAnnotationsReader:
         self.chromosomes: Dict[str, GFFFeature] = {}
         self.included_features = ["gene", "mRNA", "exon", "ncRNA_gene", "pseudogene", "lnc_RNA"]
     
-    def read(self, gff_file, only_protein_coding=True, chroms=None, max_transcript_support_level=None):
+    def read(self, gff_file, only_protein_coding=True, chroms=None, max_transcript_support_level=None, keep_info=[]):
         with open(gff_file, "rt") as f:
             
             rowit = (
@@ -209,8 +210,19 @@ class GFFAnnotationsReader:
                     except ValueError:
                         continue
                 
+                feature_info = {}
+                for info_key in keep_info:
+                    if info_key in info:
+                        feature_info[info_key] = info[info_key]
+                
                 cur_feature = GFFFeature(
-                    row["start"], row["end"], type=row["type"], id=id, direction=row["direction"], name=name
+                    row["start"],
+                    row["end"],
+                    type=row["type"],
+                    id=id,
+                    direction=row["direction"],
+                    name=name,
+                    info=feature_info,
                 )
                 
                 if parent_id is not None:
